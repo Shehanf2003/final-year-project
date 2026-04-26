@@ -34,7 +34,6 @@ export const registerUser = async (req, res) => {
     });
 
     if (user) {
-      // Admin creates the user, so we don't log them in (generate token) for the new user.
       res.status(201).json({
         _id: user._id,
         name: user.name,

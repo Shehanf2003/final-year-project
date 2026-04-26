@@ -22,7 +22,6 @@ export const deleteUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Ensure we are deleting an employee, mostly for safety
     if (user.role !== "employee") {
       return res.status(403).json({ message: "Cannot delete admin users via this API" });
     }
@@ -76,16 +75,13 @@ export const adminResetPassword = async (req, res) => {
         .json({ message: "Password must be at least 6 characters long" });
     }
 
-    // Manually hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update directly bypassing pre-save hooks to avoid double hashing if any risk,
-    // and because we don't have old password.
     const user = await User.findByIdAndUpdate(
       id,
       { password: hashedPassword },
-      { new: true } // Return updated doc (though we don't send password back)
+      { new: true }
     );
 
     if (!user) {
