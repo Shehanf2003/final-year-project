@@ -1,29 +1,39 @@
 import mongoose from 'mongoose';
 
-const customerSchema = new mongoose.Schema({
-  name: {
+const expenseSchema = new mongoose.Schema({
+  description: {
     type: String,
     required: true,
+    trim: true
   },
-  phoneNumber: {
-    type: String,
-    required: true,
-    unique: true
-  },
-  email: {
-    type: String,
-  },
-  address: {
-    type: String,
-  },
-  loyaltyPoints: {
+  amount: {
     type: Number,
-    default: 0
+    required: true,
+    min: 0
+  },
+  category: {
+    type: String,
+    enum: ['Rent', 'Utilities', 'Salaries', 'Supplies', 'Maintenance', 'Other'],
+    default: 'Other'
+  },
+  date: {
+    type: Date,
+    default: Date.now
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  status: {
+    type: String,
+    enum: ['PAID', 'PENDING'],
+    default: 'PAID'
+  },
+  paymentMethod: {
+    type: String,
+    default: 'CASH'
   }
-}, {
-  timestamps: true
-});
+}, { timestamps: true });
 
-const Customer = mongoose.model('Customer', customerSchema);
-
-export default Customer;
+const Expense = mongoose.model('Expense', expenseSchema);
+export default Expense;
