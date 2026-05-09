@@ -1,0 +1,56 @@
+import mongoose from 'mongoose';
+
+const stockMovementSchema = new mongoose.Schema({
+  product: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+    required: true
+  },
+  batch: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Batch'
+  },
+  type: {
+    type: String,
+    enum: ['PURCHASE', 'SALE', 'TRANSFER', 'ADJUSTMENT', 'RETURN', 'INITIAL'],
+    required: true
+  },
+  quantity: {
+    type: Number,
+    required: true
+  },
+  flow: {
+    type: String,
+    enum: ['IN', 'OUT']
+  },
+  unitCost: {
+    type: Number,
+    required: true,
+    default: 0
+  },
+  unitMrp: {
+    type: Number,
+    required: true,
+    default: 0
+  },
+  fromLocation: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Location'
+  },
+  toLocation: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Location'
+  },
+  reason: String,
+  referenceId: String,
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }
+}, {
+  timestamps: true
+});
+
+const StockMovement = mongoose.model('StockMovement', stockMovementSchema);
+
+export default StockMovement;
