@@ -1,0 +1,65 @@
+import express from 'express';
+import {
+  addProduct,
+  addBatch,
+  getLowStockAlerts,
+  getExpiringBatches,
+  getInventory,
+  getAllBatches,
+  updateBatch,
+  deleteBatch,
+  transferStock,
+  adjustStock,
+  getLocations,
+  deleteProduct,
+  updateProductPrice,
+  getHistoricalValuation
+} from '../controllers/inventory.controller.js';
+import { protectRoute, adminRoute } from '../middleware/auth.middleware.js';
+import {
+    createSupplier,
+    getSuppliers,
+    updateSupplier,
+    deleteSupplier,
+    getPayables,
+    recordPayment,
+    getSupplierPayments
+} from '../controllers/supplier.controller.js';
+import {
+    createPO,
+    getPOs,
+    receivePO
+} from '../controllers/purchaseOrder.controller.js';
+
+const router = express.Router();
+
+router.post('/products', protectRoute, adminRoute, addProduct);
+router.delete('/products/:id', protectRoute, adminRoute, deleteProduct);
+router.post('/batches', protectRoute, adminRoute, addBatch);
+router.get('/valuation', protectRoute, getHistoricalValuation);
+router.get('/alerts/low-stock', protectRoute, getLowStockAlerts);
+router.get('/alerts/expiring', protectRoute, getExpiringBatches);
+router.get('/', protectRoute, getInventory);
+router.get('/batches-list', protectRoute, getAllBatches);
+router.patch('/batches/:id', protectRoute, adminRoute, updateBatch);
+router.put('/products/:id/price', protectRoute, adminRoute, updateProductPrice);
+router.delete('/batches/:id', protectRoute, adminRoute, deleteBatch);
+
+router.post('/suppliers', protectRoute, adminRoute, createSupplier);
+router.get('/suppliers', protectRoute, getSuppliers);
+router.put('/suppliers/:id', protectRoute, adminRoute, updateSupplier);
+router.delete('/suppliers/:id', protectRoute, adminRoute, deleteSupplier);
+
+router.get('/payables', protectRoute, getPayables);
+router.post('/payments', protectRoute, recordPayment);
+router.get('/payments', protectRoute, getSupplierPayments);
+
+router.post('/purchase-orders', protectRoute, adminRoute, createPO);
+router.get('/purchase-orders', protectRoute, getPOs);
+router.post('/purchase-orders/:id/receive', protectRoute, adminRoute, receivePO);
+
+router.post('/transfer', protectRoute, adminRoute, transferStock);
+router.post('/adjust', protectRoute, adminRoute, adjustStock);
+router.get('/locations', protectRoute, getLocations);
+
+export default router;
