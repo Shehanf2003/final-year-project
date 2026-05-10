@@ -1,12 +1,10 @@
 import React from 'react';
 import { Navigate, Outlet, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-// Note: We removed the Navbar import to prevent the "Double Navbar" issue
 
 export const ProtectedRoute = ({ requiredModule }) => {
   const { user, loading } = useAuth();
 
-  // 1. Modern Loading State
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
@@ -19,12 +17,10 @@ export const ProtectedRoute = ({ requiredModule }) => {
     );
   }
 
-  // 2. Redirect if not logged in
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // 3. Permission Check (Access Denied UI)
   if (requiredModule) {
     if (user.role !== 'admin' && !user.allowedModules.includes(requiredModule)) {
        return (
@@ -52,7 +48,5 @@ export const ProtectedRoute = ({ requiredModule }) => {
     }
   }
 
-  // 4. Render the Child Route
-  // We strictly return Outlet only. The Navbar is now handled by AppLayout in App.jsx.
   return <Outlet />;
 };
