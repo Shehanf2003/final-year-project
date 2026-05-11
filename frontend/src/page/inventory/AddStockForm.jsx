@@ -1,0 +1,223 @@
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import clsx from 'clsx';
+import { Plus } from 'lucide-react';
+
+const AddStockForm = ({ products, onSubmit, isLoading }) => {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+    setValue,
+    watch
+  } = useForm();
+
+  const [usePackCalculator, setUsePackCalculator] = useState(false);
+  const [packData, setPackData] = useState({ packSize: 0, numPacks: 0 });
+
+  // Watch quantity to allow manual override if calculator is off
+  const quantity = watch('quantity');
+
+  useEffect(() => {
+    if (usePackCalculator) {
+        const total = (Number(packData.packSize) || 0) * (Number(packData.numPacks) || 0);
+        setValue('quantity', total);
+    }
+  }, [usePackCalculator, packData, setValue]);
+
+  const handleFormSubmit = async (data) => {
+      // Ensure types are correct for the backend
+      const formattedData = {
+          ...data,
+          mrp: Number(data.mrp),
+          quantity: Number(data.quantity),
+          ...(data.costPrice !== undefined && data.costPrice !== '' ? { costPrice: Number(data.costPrice) } : {})
+      };
+      await onSubmit(formattedData);
+      reset();
+      setUsePackCalculator(false);
+      setPackData({ packSize: 0, numPacks: 0 });
+  };
+
+  return (
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 bg-white p-6 rounded-lg shadow">
+      <h2 className="text-lg font-medium leading-6 text-gray-900 mb-4">Add New Batch</h2>
+
+      <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+        <div className="sm:col-span-3">
+          <label htmlFor="productId" className="block text-sm font-medium text-gray-700">
+            Product
+          </label>
+          <div className="mt-1">
+            <select
+              id="productId"
+              {...register('productId', { required: 'Product is required' })}
+              className={clsx(
+                "block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border",
+                errors.productId && "border-red-300"
+              )}
+            >
+              <option value="">Select a product</option>
+              {products.map((product) => (
+                <option key={product._id} value={product._id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+            {errors.productId && <p className="mt-1 text-sm text-red-600">{errors.productId.message}</p>}
+          </div>
+        </div>
+
+        <div className="sm:col-span-3">
+          <label htmlFor="batchNumber" className="block text-sm font-medium text-gray-700">
+            Batch Number
+          </label>
+          <div className="mt-1">
+            <input
+              type="text"
+              id="batchNumber"
+              {...register('batchNumber', { required: 'Batch Number is required' })}
+              className={clsx(
+                "block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border",
+                errors.batchNumber && "border-red-300"
+              )}
+            />
+            {errors.batchNumber && <p className="mt-1 text-sm text-red-600">{errors.batchNumber.message}</p>}
+          </div>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label htmlFor="expiryDate" className="block text-sm font-medium text-gray-700">
+            Expiry Date
+          </label>
+          <div className="mt-1">
+            <input
+              type="date"
+              id="expiryDate"
+              {...register('expiryDate', { required: 'Expiry Date is required' })}
+              className={clsx(
+                "block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border",
+                errors.expiryDate && "border-red-300"
+              )}
+            />
+            {errors.expiryDate && <p className="mt-1 text-sm text-red-600">{errors.expiryDate.message}</p>}
+          </div>
+        </div>
+
+         <div className="sm:col-span-2">
+          <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">
+            Total Quantity (Units)
+          </label>
+
+          <div className="flex items-center mb-2 mt-1">
+              <input
+                  type="checkbox"
+                  id="usePackCalc"
+                  className="mr-2"
+                  checked={usePackCalculator}
+                  onChange={(e) => setUsePackCalculator(e.target.checked)}
+              />
+              <label htmlFor="usePackCalc" className="text-xs text-gray-500">Calculate from Packs</label>
+          </div>
+
+          {usePackCalculator && (
+              <div className="flex space-x-2 mb-2">
+                  <div className="flex-1">
+                      <input
+                          type="number" min="0" placeholder="Size"
+                          className="w-full text-xs border rounded p-1"
+                          value={packData.packSize || ''}
+                          onChange={e => setPackData({...packData, packSize: e.target.value})}
+                      />
+                      <span className="text-[10px] text-gray-400">Units/Pack</span>
+                  </div>
+                  <div className="flex-1">
+                      <input
+                          type="number" min="0" placeholder="Count"
+                          className="w-full text-xs border rounded p-1"
+                          value={packData.numPacks || ''}
+                          onChange={e => setPackData({...packData, numPacks: e.target.value})}
+                      />
+                      <span className="text-[10px] text-gray-400">No. Packs</span>
+                  </div>
+              </div>
+          )}
+
+          <div className="mt-1">
+            <input
+              type="number"
+              id="quantity"
+              min="0"
+              readOnly={usePackCalculator}
+              {...register('quantity', { required: 'Quantity is required', min: 0 })}
+              className={clsx(
+                "block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border",
+                errors.quantity && "border-red-300",
+                usePackCalculator && "bg-gray-100 cursor-not-allowed"
+              )}
+            />
+            {errors.quantity && <p className="mt-1 text-sm text-red-600">{errors.quantity.message}</p>}
+          </div>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label htmlFor="mrp" className="block text-sm font-medium text-gray-700">
+            MRP (Per Unit)
+          </label>
+          <div className="mt-1">
+            <input
+              type="number"
+              id="mrp"
+              step="0.01"
+              min="0"
+              {...register('mrp', { required: 'MRP is required', min: 0 })}
+              className={clsx(
+                "block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border",
+                errors.mrp && "border-red-300"
+              )}
+            />
+            {errors.mrp && <p className="mt-1 text-sm text-red-600">{errors.mrp.message}</p>}
+          </div>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label htmlFor="costPrice" className="block text-sm font-medium text-gray-700">
+            Cost Price (Per Unit)
+          </label>
+          <div className="mt-1">
+            <input
+              type="number"
+              id="costPrice"
+              step="0.01"
+              min="0"
+              {...register('costPrice', { min: 0 })}
+              className={clsx(
+                "block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border",
+                errors.costPrice && "border-red-300"
+              )}
+            />
+            {errors.costPrice && <p className="mt-1 text-sm text-red-600">{errors.costPrice.message}</p>}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+        >
+          {isLoading ? 'Processing...' : (
+             <>
+               <Plus className="w-4 h-4 mr-2" />
+               Add Batch
+             </>
+          )}
+        </button>
+      </div>
+    </form>
+  );
+};
+
+export default AddStockForm;
