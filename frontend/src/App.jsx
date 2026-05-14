@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom'; // Added Outlet here
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
@@ -19,7 +19,6 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import SyncManager from './components/SyncManager';
 
-// This layout wraps pages that need the Navbar
 const AppLayout = () => {
   return (
     <div className="min-h-screen bg-gray-50">
@@ -41,10 +40,8 @@ function App() {
         <AuthProvider>
           <Toaster position="top-right" />
           <Routes>
-            {/* Public Route */}
             <Route path="/login" element={<Login />} />
 
-            {/* Protected Routes Wrapper (Apply Layout & Auth Check) */}
             <Route element={<AppLayout />}>
               
               <Route element={<ProtectedRoute />}>
@@ -73,7 +70,6 @@ function App() {
 
             </Route>
 
-            {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>

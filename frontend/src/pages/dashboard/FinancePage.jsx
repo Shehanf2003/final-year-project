@@ -9,7 +9,7 @@ import { exportToPDF, exportToExcel } from '../../lib/exportUtils';
 import toast from 'react-hot-toast';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { io } from 'socket.io-client';
-
+import ProfitOptimizer from './ProfitOptimizer';
 import axiosInstance from '../../lib/axios';
 
 const FinancePage = () => {
