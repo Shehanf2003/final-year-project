@@ -1,122 +1,85 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom'; // Added Outlet here
+import { AuthProvider } from './context/AuthContext';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'react-hot-toast';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import ModulePage from './pages/ModulePage';
+import RegisterUser from './pages/RegisterUser';
+import InventoryDashboard from './pages/inventory/InventoryDashboard';
+import POSPage from './pages/pos/POSPage';
+import SalesHistory from './pages/pos/SalesHistory';
+import UserManagement from './pages/admin/UserManagement';
+import FinancePage from './pages/dashboard/FinancePage';
+import Reports from './pages/Reports';
+import ReportingAnalytics from './pages/ReportingAnalytics';
+import { ProtectedRoute } from './components/ProtectedRoute';
+
+import Navbar from './components/Navbar';
+import SyncManager from './components/SyncManager';
+
+// This layout wraps pages that need the Navbar
+const AppLayout = () => {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <main>
+        <Outlet />
+      </main>
+      <SyncManager />
+    </div>
+  );
+};
+
+const queryClient = new QueryClient();
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <QueryClientProvider client={queryClient}>
+      <Router>
+        <AuthProvider>
+          <Toaster position="top-right" />
+          <Routes>
+            {/* Public Route */}
+            <Route path="/login" element={<Login />} />
 
-      <div className="ticks"></div>
+            {/* Protected Routes Wrapper (Apply Layout & Auth Check) */}
+            <Route element={<AppLayout />}>
+              
+              <Route element={<ProtectedRoute />}>
+                 <Route path="/" element={<Dashboard />} />
+                 <Route path="/register-user" element={<RegisterUser />} />
+                 <Route path="/admin/users" element={<UserManagement />} />
+              </Route>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+              <Route element={<ProtectedRoute requiredModule="INVENTORY" />}>
+                <Route path="/inventory" element={<InventoryDashboard />} />
+              </Route>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+              <Route element={<ProtectedRoute requiredModule="POS" />}>
+                <Route path="/pos" element={<POSPage />} />
+                <Route path="/pos/history" element={<SalesHistory />} />
+              </Route>
+
+              <Route element={<ProtectedRoute requiredModule="FINANCE" />}>
+                <Route path="/finance" element={<FinancePage />} />
+              </Route>
+
+              <Route element={<ProtectedRoute requiredModule="REPORTING" />}>
+                <Route path="/reporting" element={<Reports />} />
+                <Route path="/reporting/analytics" element={<ReportingAnalytics />} />
+              </Route>
+
+            </Route>
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </Router>
+    </QueryClientProvider>
+  );
 }
 
-export default App
+export default App;
