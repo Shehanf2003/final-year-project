@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import Batch from '../models/Batch.js';
 import Location from '../models/Location.js';
@@ -442,14 +443,20 @@ const transferSchema = z.object({
 });
 
 export const transferStock = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { batchId, fromLocationId, toLocationId, quantity, reason } = transferSchema.parse(req.body);
 
-        const batch = await Batch.findById(batchId);
-        if (!batch) return res.status(404).json({ message: "Batch not found" });
+        const batch = await Batch.findById(batchId).session(session);
+        if (!batch) {
+            await session.abortTransaction();
+            return res.status(404).json({ message: "Batch not found" });
+        }
 
         const sourceStock = batch.stockDistribution.find(s => s.location.toString() === fromLocationId);
         if (!sourceStock || sourceStock.quantity < quantity) {
+            await session.abortTransaction();
             return res.status(400).json({ message: "Insufficient stock at source location" });
         }
 
@@ -462,9 +469,10 @@ export const transferStock = async (req, res) => {
             batch.stockDistribution.push({ location: toLocationId, quantity });
         }
 
-        await batch.save();
+        await batch.save({ session });
 
-        await StockMovement.create({
+        // Note: Mongoose Model.create() requires the documents to be passed in an array when using a session
+        await StockMovement.create([{
             product: batch.productId,
             batch: batch._id,
             type: 'TRANSFER',
@@ -473,13 +481,17 @@ export const transferStock = async (req, res) => {
             toLocation: toLocationId,
             reason,
             user: req.user?._id
-        });
+        }], { session });
 
+        await session.commitTransaction();
         res.json({ message: "Transfer successful", batch });
 
     } catch (error) {
+        await session.abortTransaction();
         if (error instanceof z.ZodError) return res.status(400).json({ errors: error.errors });
         res.status(500).json({ message: error.message });
+    } finally {
+        session.endSession();
     }
 };
 

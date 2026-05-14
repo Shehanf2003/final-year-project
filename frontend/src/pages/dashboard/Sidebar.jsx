@@ -31,8 +31,8 @@ const Sidebar = ({ activeModule }) => {
 
   const canAccess = (moduleId) => {
     if (moduleId === 'DASHBOARD') return true;
-    if (user.role === 'admin') return true;
-    return user.allowedModules?.includes(moduleId);
+    if (user?.role === 'admin') return true;
+    return user?.allowedModules?.includes(moduleId);
   };
 
   return (
@@ -67,7 +67,7 @@ const Sidebar = ({ activeModule }) => {
             })}
         </div>
 
-        {user.role === 'admin' && (
+        {user?.role === 'admin' && (
           <div className="mt-8">
              <p className="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Admin</p>
              {adminItems.map((item) => (
@@ -87,11 +87,11 @@ const Sidebar = ({ activeModule }) => {
       <div className="p-4 border-t border-slate-800 bg-slate-900">
          <div className="flex items-center mb-4 px-2">
             <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-xs">
-              {user.name.charAt(0)}
+              {user?.name?.charAt(0) || 'U'}
             </div>
             <div className="ml-3">
-              <p className="text-sm font-medium text-white">{user.name}</p>
-              <p className="text-xs text-slate-400 capitalize">{user.role}</p>
+              <p className="text-sm font-medium text-white">{user?.name || 'Unknown User'}</p>
+              <p className="text-xs text-slate-400 capitalize">{user?.role || 'Guest'}</p>
             </div>
          </div>
          <button
