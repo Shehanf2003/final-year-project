@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { Pill } from 'lucide-react';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -21,10 +20,8 @@ const Navbar = () => {
           
           <div className="flex items-center">
             <Link to="/" className="flex items-center flex-shrink-0 group">
-              <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg group-hover:bg-blue-500 transition-colors duration-200">
-                 <Pill className="h-5 w-5 text-white" />
-              </div>
-              <span className="ml-3 text-xl font-bold text-white tracking-tight group-hover:text-blue-400 transition-colors">
+              <img src="/Navbar.png" alt="Pharma ERP Logo" className="h-20 w-auto" />
+              <span className=" text-xl font-bold text-white tracking-tight group-hover:text-blue-400 transition-colors">
                 Pharma ERP
               </span>
             </Link>
