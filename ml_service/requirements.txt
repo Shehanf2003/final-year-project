@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pymongo
+pandas
+numpy
+scikit-learn
+prophet
+python-dotenv
+pulp
+python-multipart
