@@ -49,6 +49,10 @@ const POSPage = () => {
   const [customer, setCustomer] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [customerSearch, setCustomerSearch] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [showRegisterCustomer, setShowRegisterCustomer] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({ name: '', phoneNumber: '', email: '' });
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [editingItem, setEditingItem] = useState(null);
   const [globalPatientName, setGlobalPatientName] = useState('');
@@ -343,6 +347,31 @@ const POSPage = () => {
   };
 
   const completeSale = async () => {
+    let customerIdToUse = customer?._id;
+    const loadingToast = toast.loading('Processing Sale...');
+
+    if (showRegisterCustomer) {
+        if (!newCustomer.name || !newCustomer.phoneNumber) {
+            toast.dismiss(loadingToast);
+            toast.error("Name and Phone Number are required for new customers");
+            return;
+        }
+        try {
+            if (!isOffline) {
+                const res = await axiosInstance.post('/pos/customers', newCustomer);
+                customerIdToUse = res.data._id;
+            } else {
+                toast.dismiss(loadingToast);
+                toast.error("Cannot register new customer while offline");
+                return;
+            }
+        } catch (e) {
+            toast.dismiss(loadingToast);
+            toast.error(e.response?.data?.message || "Failed to register customer");
+            return;
+        }
+    }
+
     const saleData = {
       items: cart.map(item => ({
         productId: item.productId,
@@ -352,10 +381,10 @@ const POSPage = () => {
         dosageInstructions: item.dosage
       })),
       paymentMethod,
-      customerId: customer?._id,
+      customerId: customerIdToUse,
+      contactEmail: (!customerIdToUse && !showRegisterCustomer) ? contactEmail : '',
+      contactPhone: (!customerIdToUse && !showRegisterCustomer) ? contactPhone : '',
     };
-
-    const loadingToast = toast.loading('Processing Sale...');
 
     try {
         if (!isOffline) {
@@ -366,6 +395,10 @@ const POSPage = () => {
             setShowCheckout(false);
             setShowPaymentGateway(false);
             setCustomer(null);
+            setContactEmail('');
+            setContactPhone('');
+            setShowRegisterCustomer(false);
+            setNewCustomer({ name: '', phoneNumber: '', email: '' });
             setGlobalPatientName('');
             loadProducts();
         } else {
@@ -379,6 +412,10 @@ const POSPage = () => {
              setCart([]);
              setShowCheckout(false);
              setCustomer(null);
+             setContactEmail('');
+             setContactPhone('');
+             setShowRegisterCustomer(false);
+             setNewCustomer({ name: '', phoneNumber: '', email: '' });
              setGlobalPatientName('');
              updatePendingCount();
         } else {
@@ -640,7 +677,7 @@ const POSPage = () => {
                   updateDosage(batchId, dosage);
               }}
               globalPatientName={globalPatientName}
-              customerName={customer?.name || ''}
+              customerName={customer?.name || newCustomer?.name || ''}
           />
       )}
 
@@ -778,36 +815,96 @@ const POSPage = () => {
 
                 <div className="p-6 flex-1 overflow-y-auto">
                     <div className="mb-6">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Customer</label>
-                        {!customer ? (
-                            <div className="relative">
-                                <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-medium text-slate-700">Customer Details</label>
+                            {!customer && (
+                                <button 
+                                    onClick={() => setShowRegisterCustomer(!showRegisterCustomer)}
+                                    className="text-xs text-emerald-600 font-medium hover:text-emerald-700 transition-colors"
+                                >
+                                    {showRegisterCustomer ? 'Cancel Registration' : '+ Register New Customer'}
+                                </button>
+                            )}
+                        </div>
+
+                        {showRegisterCustomer ? (
+                            <div className="space-y-3 bg-emerald-50 p-3 rounded-lg border border-emerald-100">
                                 <input
-                                   type="text"
-                                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                                   placeholder="Search by Name or Phone..."
-                                   value={customerSearch}
-                                   onChange={(e) => {
-                                       setCustomerSearch(e.target.value);
-                                       searchCustomers(e.target.value);
-                                   }}
+                                    type="text"
+                                    placeholder="Full Name *"
+                                    className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                                    value={newCustomer.name}
+                                    onChange={e => setNewCustomer({ ...newCustomer, name: e.target.value })}
                                 />
-                                {customers.length > 0 && customerSearch && (
-                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
-                                        {customers.map(c => (
-                                            <div key={c._id}
-                                                 className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
-                                                 onClick={() => {
-                                                     setCustomer(c);
-                                                     setCustomerSearch('');
-                                                     setCustomers([]);
-                                                 }}>
-                                                <div className="font-bold text-slate-700">{c.name}</div>
-                                                <div className="text-xs text-slate-500">{c.phoneNumber}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input
+                                        type="text"
+                                        placeholder="Phone Number *"
+                                        className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                                        value={newCustomer.phoneNumber}
+                                        onChange={e => setNewCustomer({ ...newCustomer, phoneNumber: e.target.value })}
+                                    />
+                                    <input
+                                        type="email"
+                                        placeholder="Email Address"
+                                        className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                                        value={newCustomer.email}
+                                        onChange={e => setNewCustomer({ ...newCustomer, email: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        ) : !customer ? (
+                            <div className="space-y-3">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+                                    <input
+                                       type="text"
+                                       className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                                       placeholder="Search by Name or Phone..."
+                                       value={customerSearch}
+                                       onChange={(e) => {
+                                           setCustomerSearch(e.target.value);
+                                           searchCustomers(e.target.value);
+                                       }}
+                                    />
+                                    {customers.length > 0 && customerSearch && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
+                                            {customers.map(c => (
+                                                <div key={c._id}
+                                                     className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0"
+                                                     onClick={() => {
+                                                         setCustomer(c);
+                                                         setCustomerSearch('');
+                                                         setCustomers([]);
+                                                     }}>
+                                                    <div className="font-bold text-slate-700">{c.name}</div>
+                                                    <div className="text-xs text-slate-500">{c.phoneNumber}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="h-px bg-slate-200 flex-1"></div>
+                                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">OR GUEST E-BILL</span>
+                                    <div className="h-px bg-slate-200 flex-1"></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input
+                                        type="text"
+                                        placeholder="Guest Phone Number"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                                        value={contactPhone}
+                                        onChange={e => setContactPhone(e.target.value)}
+                                    />
+                                    <input
+                                        type="email"
+                                        placeholder="Guest Email Address"
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                                        value={contactEmail}
+                                        onChange={e => setContactEmail(e.target.value)}
+                                    />
+                                </div>
                             </div>
                         ) : (
                             <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg flex justify-between items-center">

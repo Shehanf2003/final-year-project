@@ -335,38 +335,51 @@ def optimize_profit(
         suggestions.append("Critical: Target profit exceeds forecasted Gross Profit. Expense cuts alone are insufficient; you must increase sales volume or retail prices.")
     elif expense_reduction_needed > 0:
         
-        action_pool = [
-            {"id": "inv_rat", "name": "Inventory Rationalization (Drop Fringe Cluster stock)", "savings": 0.05 * current_monthly_expenses, "disruption": 2},
-            {"id": "brand_con", "name": "Brand Consolidation (Filter non-BE brands)", "savings": 0.03 * current_monthly_expenses, "disruption": 1},
-            {"id": "proc_opt", "name": "Procurement Optimization (Bulk discounts on NCDs)", "savings": 0.08 * current_monthly_expenses, "disruption": 3},
-            {"id": "util_mgt", "name": "Utility Management (TOU arbitrage / Off-peak scheduling)", "savings": utility_costs * 0.15 if utility_costs else 0.02 * current_monthly_expenses, "disruption": 2},
-            {"id": "staff_ros", "name": "Staff Rostering (Sunday Closure / Pharmacist-Only Shift)", "savings": 0.15 * current_monthly_expenses, "disruption": 8},
-            {"id": "green_fin", "name": "Initiate Green Loan for Solar Power System", "savings": utility_costs * 0.40 if utility_costs else 0, "disruption": 5}
-        ]
+        db_actions = list(db.optimization_actions.find({"isActive": True}))
+        action_pool = []
+        
+        for action in db_actions:
+            calc_savings = action.get("savings_expense_multiplier", 0.0) * current_monthly_expenses
+            if utility_costs > 0:
+                calc_savings += action.get("savings_utility_multiplier", 0.0) * utility_costs
+            else:
+                calc_savings += action.get("fallback_expense_multiplier", 0.0) * current_monthly_expenses
+                
+            action_pool.append({
+                "id": action["action_id"],
+                "name": action["name"],
+                "savings": calc_savings,
+                "disruption": action.get("disruption", 1)
+            })
 
-        prob = pulp.LpProblem("Pharmacy_Expense_Optimization", pulp.LpMinimize)
-
-        action_vars = pulp.LpVariable.dicts("Action", [action["id"] for action in action_pool], cat='Binary')
-
-        prob += pulp.lpSum([action["disruption"] * action_vars[action["id"]] for action in action_pool]), "Total_Disruption"
-
-        prob += pulp.lpSum([action["savings"] * action_vars[action["id"]] for action in action_pool]) >= expense_reduction_needed, "Meet_Savings_Target"
-
-        if utility_costs <= (0.10 * target_net_profit):
-            prob += action_vars["green_fin"] == 0, "Disable_Green_Finance_If_Not_Needed"
-
-        prob.solve(pulp.PULP_CBC_CMD(msg=False))
-
-        if pulp.LpStatus[prob.status] == 'Optimal':
-            total_planned_savings = 0
-            for action in action_pool:
-                if action_vars[action["id"]].varValue == 1.0:
-                    suggestions.append(f"{action['name']} (Est. Rs. {round(action['savings'], 2)} savings)")
-                    total_planned_savings += action['savings']
-            
-            suggestions.insert(0, f"Optimal Action Plan: Implement the following combination to reduce expenses by ~Rs. {round(total_planned_savings, 2)} with minimal operational disruption.")
+        if not action_pool:
+            suggestions.append("Warning: No active optimization actions found in the database. Please add actions to enable optimizer.")
         else:
-            suggestions.append(f"Warning: The mathematical optimizer could not find a combination of actions to reach the Rs. {round(expense_reduction_needed, 2)} target. Consider revising your Net Profit target.")
+            prob = pulp.LpProblem("Pharmacy_Expense_Optimization", pulp.LpMinimize)
+
+            action_vars = pulp.LpVariable.dicts("Action", [action["id"] for action in action_pool], cat='Binary')
+
+            prob += pulp.lpSum([action["disruption"] * action_vars[action["id"]] for action in action_pool]), "Total_Disruption"
+
+            prob += pulp.lpSum([action["savings"] * action_vars[action["id"]] for action in action_pool]) >= expense_reduction_needed, "Meet_Savings_Target"
+
+            if utility_costs <= (0.10 * target_net_profit) and "green_fin" in action_vars:
+                prob += action_vars["green_fin"] == 0, "Disable_Green_Finance_If_Not_Needed"
+
+            prob.solve(pulp.PULP_CBC_CMD(msg=False))
+
+            if pulp.LpStatus[prob.status] == 'Optimal':
+                total_planned_savings = 0
+                for action in action_pool:
+                    if action_vars[action["id"]].varValue == 1.0:
+                        suggestions.append(f"{action['name']} (Est. Rs. {round(action['savings'], 2)} savings)")
+                        total_planned_savings += action['savings']
+                
+                suggestions.insert(0, f"Optimal Action Plan: Implement the following combination to reduce expenses by ~Rs. {round(total_planned_savings, 2)} with minimal operational disruption.")
+            else:
+                suggestions.append(f"Warning: The mathematical optimizer could not find a combination of actions to reach the Rs. {round(expense_reduction_needed, 2)} target. Consider revising your Net Profit target.")
+    else:
+        suggestions.append("Excellent: Your current monthly expenses are already below the target allowed expenses. No expense reductions are needed to achieve your target net profit.")
 
     active_alerts = []
     
