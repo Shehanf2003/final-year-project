@@ -6,9 +6,10 @@ import RevenueChart from './dashboard/RevenueChart';
 import axiosInstance from '../lib/axios';
 import { Package, ShoppingCart, TrendingUp, AlertCircle, Plus, DollarSign, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { socket } from '../lib/socket'; 
+import { useSocket } from '../context/SocketContext';
 
 const Dashboard = () => {
+  const socket = useSocket();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -41,6 +42,8 @@ const Dashboard = () => {
   }, [dateRange.start, dateRange.end, fetchStats]);
 
   useEffect(() => {
+      if (!socket) return;
+
       socket.on('DASHBOARD_UPDATE', fetchStats);
       socket.on('STATS_UPDATE', fetchStats);
 
@@ -48,7 +51,7 @@ const Dashboard = () => {
           socket.off('DASHBOARD_UPDATE', fetchStats);
           socket.off('STATS_UPDATE', fetchStats);
       };
-  }, [fetchStats]);
+  }, [socket, fetchStats]);
 
   const handleAddExpense = async (e) => {
     e.preventDefault();

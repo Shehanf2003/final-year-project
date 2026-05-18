@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import http from "http";
-import { Server } from "socket.io";
 
 import { connectDB } from "./lib/db.js";
 import authRoutes from "./routes/auth.route.js";
@@ -15,6 +14,7 @@ import financeRoutes from "./routes/finance.route.js";
 import shiftRoutes from "./routes/shift.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import salesRoutes from './routes/sales.routes.js';
+import { initSocket } from "./socket.js";
 
 dotenv.config();
 
@@ -28,23 +28,8 @@ app.use(cors({
   credentials: true,
 }));
 
-const io = new Server(server, {
-  cors: {
-    origin: CLIENT_URL,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  },
-});
-
+const io = initSocket(server);
 app.set("io", io);
-
-io.on("connection", (socket) => {
-  console.log("Client connected to Socket.IO:", socket.id);
-  
-  socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
-  });
-});
 
 const PORT = process.env.PORT || 5001;
 
