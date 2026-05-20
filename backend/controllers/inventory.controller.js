@@ -4,6 +4,7 @@ import Batch from '../models/Batch.js';
 import Location from '../models/Location.js';
 import StockMovement from '../models/StockMovement.js';
 import User from '../models/User.js';
+import NmraPriceCap from '../models/NmraPriceCap.js';
 import { sendLowStockAlert } from '../services/notification.service.js';
 import { z } from 'zod';
 
@@ -127,6 +128,49 @@ export const addProduct = async (req, res) => {
           return res.status(400).json({ errors: error.errors });
        }
     }
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getNmraPrices = async (req, res) => {
+  try {
+    const prices = await NmraPriceCap.find();
+    res.json(prices);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const addOrUpdateNmraPrice = async (req, res) => {
+  try {
+    const { genericName, maxPrice } = req.body;
+    if (!genericName || maxPrice === undefined) {
+      return res.status(400).json({ message: "Generic name and max price are required" });
+    }
+    
+    const priceCap = await NmraPriceCap.findOneAndUpdate(
+      { genericName: genericName.toLowerCase() },
+      { maxPrice },
+      { new: true, upsert: true }
+    );
+    
+    res.status(200).json(priceCap);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const deleteNmraPrice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const priceCap = await NmraPriceCap.findByIdAndDelete(id);
+
+    if (!priceCap) {
+      return res.status(404).json({ message: "NMRA price cap not found" });
+    }
+
+    res.json({ message: "NMRA price cap deleted successfully" });
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };

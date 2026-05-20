@@ -13,7 +13,10 @@ import {
   getLocations,
   deleteProduct,
   updateProductPrice,
-  getHistoricalValuation
+  getHistoricalValuation,
+  getNmraPrices,
+  addOrUpdateNmraPrice,
+  deleteNmraPrice
 } from '../controllers/inventory.controller.js';
 import { protectRoute, adminRoute } from '../middleware/auth.middleware.js';
 import {
@@ -44,6 +47,10 @@ router.get('/batches-list', protectRoute, getAllBatches);
 router.patch('/batches/:id', protectRoute, adminRoute, updateBatch);
 router.put('/products/:id/price', protectRoute, adminRoute, updateProductPrice);
 router.delete('/batches/:id', protectRoute, adminRoute, deleteBatch);
+
+router.get('/nmra-prices', protectRoute, getNmraPrices);
+router.post('/nmra-prices', protectRoute, adminRoute, addOrUpdateNmraPrice);
+router.delete('/nmra-prices/:id', protectRoute, adminRoute, deleteNmraPrice);
 
 router.post('/suppliers', protectRoute, adminRoute, createSupplier);
 router.get('/suppliers', protectRoute, getSuppliers);

@@ -5,7 +5,8 @@ import ManageStockTable from './ManageStockTable';
 import SupplierManager from './SupplierManager';
 import PurchaseOrderManager from './PurchaseOrderManager';
 import ProductList from './ProductList';
-import { Package, PlusCircle, Boxes, ClipboardList, Truck, ShoppingCart, AlertTriangle, AlertCircle, FileText } from 'lucide-react';
+import NmraPriceManager from './NmraPriceManager';
+import { Package, PlusCircle, Boxes, ClipboardList, Truck, ShoppingCart, AlertTriangle, AlertCircle, FileText, Settings } from 'lucide-react';
 
 const InventoryDashboard = () => {
   // We don't strictly need the full inventory here, 
@@ -146,7 +147,7 @@ const InventoryDashboard = () => {
       )}
 
       {/* Tabs to Switch Modes */}
-      <div className="flex space-x-4 mb-6">
+      <div className="flex flex-wrap gap-4 mb-6">
         <button
           onClick={() => setActiveTab('stock')}
           className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -216,6 +217,18 @@ const InventoryDashboard = () => {
           <ShoppingCart className="w-4 h-4 mr-2" />
           Purchase Orders
         </button>
+
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'settings'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+          }`}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          NMRA Settings
+        </button>
       </div>
 
       <div className="space-y-8">
@@ -251,6 +264,9 @@ const InventoryDashboard = () => {
           )}
           {activeTab === 'po' && (
              <PurchaseOrderManager />
+          )}
+          {activeTab === 'settings' && (
+             <NmraPriceManager />
           )}
         </section>
       </div>

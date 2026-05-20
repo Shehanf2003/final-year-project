@@ -4,15 +4,6 @@ import clsx from 'clsx';
 import ScannerModal from '../../components/ScannerModal';
 import { z } from 'zod';
 
-// Smart dictionary for NMRA (Sri Lanka) Gazetted Price Caps (Per Unit)
-// These values are approximate examples and should be updated as per the latest gazette
-const NMRA_PRICE_CAPS = {
-  'paracetamol': 4.00,
-  'amoxicillin': 30.00,
-  'metformin': 15.00,
-  'losartan': 20.00,
-};
-
 const productSchema = z.object({
   name: z.string().min(1, 'Product Name is required'),
   genericName: z.string().optional(),
@@ -60,6 +51,51 @@ const AddProductForm = ({ onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showScanner, setShowScanner] = useState(false);
+  const [nmraPriceCaps, setNmraPriceCaps] = useState({});
+
+  useEffect(() => {
+    const fetchNmraPrices = async () => {
+      try {
+        const CACHE_KEY = 'nmraPricesCache';
+        const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+        const cached = localStorage.getItem(CACHE_KEY);
+        
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Date.now() - parsed.timestamp < CACHE_DURATION) {
+              const capsMap = {};
+              parsed.data.forEach(item => {
+                 capsMap[item.genericName.toLowerCase()] = item.maxPrice;
+              });
+              setNmraPriceCaps(capsMap);
+              return;
+            }
+          } catch (e) {
+            console.warn("Invalid NMRA cache, fetching fresh data...");
+          }
+        }
+
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/inventory/nmra-prices', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+          const capsMap = {};
+          data.forEach(item => {
+             capsMap[item.genericName.toLowerCase()] = item.maxPrice;
+          });
+          setNmraPriceCaps(capsMap);
+        }
+      } catch (err) {
+        console.error("Failed to fetch NMRA price caps:", err);
+      }
+    };
+    
+    fetchNmraPrices();
+  }, []);
 
   useEffect(() => {
     if (usePackCalculator) {
@@ -89,12 +125,12 @@ const AddProductForm = ({ onSuccess }) => {
         // Smart NMRA Price Cap Check
         if (formData.genericName) {
           const generic = formData.genericName.toLowerCase();
-          const matchedDrug = Object.keys(NMRA_PRICE_CAPS).find(drug => generic.includes(drug));
+          const matchedDrug = Object.keys(nmraPriceCaps).find(drug => generic.includes(drug));
           
-          if (matchedDrug && Number(batchData.mrp) > NMRA_PRICE_CAPS[matchedDrug]) {
+          if (matchedDrug && Number(batchData.mrp) > nmraPriceCaps[matchedDrug]) {
              setMessage({ 
                type: 'error', 
-               text: `NMRA Compliance: The Maximum Retail Price (MRP) for ${matchedDrug} is gazetted at Rs. ${NMRA_PRICE_CAPS[matchedDrug]}. You cannot exceed this.` 
+               text: `NMRA Compliance: The Maximum Retail Price (MRP) for ${matchedDrug} is gazetted at Rs. ${nmraPriceCaps[matchedDrug]}. You cannot exceed this.` 
              });
              setLoading(false);
              return;
