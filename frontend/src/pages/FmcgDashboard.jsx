@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, ShoppingCart, AlertCircle, X, PlusCircle, Activity } from 'lucide-react';
+import { Package, ShoppingCart, AlertCircle, X, PlusCircle, Activity, Calendar, ArrowUpRight, ArrowDownRight, Minus, Sparkles } from 'lucide-react';
 
 const SkeletonLoader = () => (
   <div className="animate-pulse space-y-6 w-full">
@@ -22,6 +22,13 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
     const [loading, setLoadingFmcg] = useState(false);
     const [error, setFmcgError] = useState('');
 
+    const [viewMode, setViewMode] = useState('overview');
+    const [compareYear, setCompareYear] = useState(new Date().getFullYear());
+    const [compareMonth, setCompareMonth] = useState(new Date().getMonth() + 1);
+    const [compareData, setCompareData] = useState(null);
+    const [loadingCompare, setLoadingCompare] = useState(false);
+    const [compareError, setCompareError] = useState('');
+
     const fetchFmcgData = async () => {
         setLoadingFmcg(true);
         setFmcgError('');
@@ -41,10 +48,37 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
         }
     };
 
+    const fetchCompareData = async () => {
+        setLoadingCompare(true);
+        setCompareError('');
+        setCompareData(null);
+        
+        try {
+            const response = await fetch(`http://localhost:8000/api/ml/fmcg-clustering/monthly-compare?year=${compareYear}&month=${compareMonth}`);
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.detail || 'Failed to fetch comparison data');
+            }
+            const data = await response.json();
+            setCompareData(data);
+        } catch (err) {
+            setCompareError(err.message);
+        } finally {
+            setLoadingCompare(false);
+        }
+    };
+
     useEffect(() => {
         fetchFmcgData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [refreshTrigger, days]);
+
+    useEffect(() => {
+        if (viewMode === 'monthly') {
+            fetchCompareData();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [viewMode, compareYear, compareMonth, refreshTrigger]);
 
     useEffect(() => {
         const fetchInventoryData = async () => {
@@ -124,14 +158,14 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
 
     return (
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700 shadow-lg mb-8 min-h-[500px]">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-8 gap-6">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-6 gap-6">
                 <div>
                     <div className="flex items-center gap-3">
                         <h2 className="text-xl font-bold text-white flex items-center gap-3 tracking-wide">
                             <Package className="w-6 h-6 text-cyan-400" />
                             FMCG K-Means Analysis
                         </h2>
-                        {silhouetteScore !== null && (
+                        {viewMode === 'overview' && silhouetteScore !== null && (
                             <span className="flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-md text-xs font-bold shadow-sm" title="Silhouette Score: Measures cluster quality (closer to 1.0 is better)">
                                 <Activity className="w-3.5 h-3.5" />
                                 Model Confidence: {silhouetteScore}
@@ -139,10 +173,31 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                         )}
                     </div>
                     <p className="text-base text-gray-400 mt-2 font-bold">
-                        Categorizes products dynamically based on {days}-day volume, order frequency, and current month seasonality.
+                        {viewMode === 'overview' 
+                            ? `Categorizes products dynamically based on ${days}-day volume, order frequency, and current month seasonality.`
+                            : `Compares product movement categories between ${compareMonth}/${compareYear} and the previous month.`
+                        }
                     </p>
                 </div>
-                {hasData && (
+                
+                <div className="flex gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-700 shrink-0">
+                    <button 
+                        onClick={() => setViewMode('overview')}
+                        className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${viewMode === 'overview' ? 'bg-cyan-500 text-slate-950' : 'text-gray-400 hover:text-white hover:bg-slate-800'}`}
+                    >
+                        Overview
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('monthly')}
+                        className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${viewMode === 'monthly' ? 'bg-cyan-500 text-slate-950' : 'text-gray-400 hover:text-white hover:bg-slate-800'}`}
+                    >
+                        Monthly Compare
+                    </button>
+                </div>
+            </div>
+
+            {viewMode === 'overview' && hasData && (
+                <div className="flex justify-end mb-6">
                     <button 
                         onClick={() => setShowPoSuggestions(!showPoSuggestions)}
                         className={`flex items-center px-5 py-2.5 rounded-lg shadow-sm transition-colors text-sm font-black whitespace-nowrap ${
@@ -154,10 +209,10 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                         {showPoSuggestions ? <X className="w-5 h-5 mr-2 stroke-[3]" /> : <ShoppingCart className="w-5 h-5 mr-2 stroke-[3]" />}
                         {showPoSuggestions ? 'Hide PO Suggestions' : 'Suggest Purchase Orders'}
                     </button>
-                )}
-            </div>
+                </div>
+            )}
             
-            {error && (
+            {viewMode === 'overview' && error && (
                 <div className="mb-6 rounded-md bg-slate-900 p-5 border-l-4 border-orange-500 shadow-md">
                     <div className="flex">
                         <AlertCircle className="h-6 w-6 text-orange-500 mr-3 flex-shrink-0" />
@@ -166,8 +221,9 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                 </div>
             )}
             
-            {/* PO Suggestions UI */}
-            {showPoSuggestions && poSuggestions.length > 0 && (
+            {viewMode === 'overview' ? (
+                <>
+            {showPoSuggestions && hasData && poSuggestions.length > 0 && (
                 <div className="mb-8 bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
                     <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3 tracking-wide">
                         <ShoppingCart className="w-6 h-6 text-cyan-400" />
@@ -245,6 +301,125 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                         </tbody>
                     </table>
                 </div>
+            )}
+                </>
+            ) : (
+                <>
+                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                        <div className="flex items-center gap-2">
+                            <Calendar className="w-5 h-5 text-gray-400" />
+                            <select 
+                                value={compareYear} 
+                                onChange={e => setCompareYear(Number(e.target.value))} 
+                                className="bg-slate-950 border border-slate-700 text-white p-2.5 rounded-md text-sm font-bold outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                            >
+                                {[...Array(5)].map((_, i) => {
+                                    const y = new Date().getFullYear() - i;
+                                    return <option key={y} value={y}>{y}</option>;
+                                })}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <select 
+                                value={compareMonth} 
+                                onChange={e => setCompareMonth(Number(e.target.value))} 
+                                className="bg-slate-950 border border-slate-700 text-white p-2.5 rounded-md text-sm font-bold outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                            >
+                                {[...Array(12)].map((_, i) => (
+                                    <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {compareError && (
+                        <div className="mb-6 rounded-md bg-slate-900 p-5 border-l-4 border-orange-500 shadow-md">
+                            <div className="flex">
+                                <AlertCircle className="h-6 w-6 text-orange-500 mr-3 flex-shrink-0" />
+                                <div className="text-base text-white font-bold"><span className="font-black">Error:</span> {compareError}</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {loadingCompare && <SkeletonLoader />}
+
+                    {!loadingCompare && !compareError && compareData && compareData.data && (
+                        compareData.data.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-4 border-slate-700 border-dashed bg-slate-900">
+                                <h3 className="text-xl font-bold text-white tracking-wide">No Comparison Data Available</h3>
+                                <p className="text-gray-400 text-base mt-2 font-bold">Try selecting a different month or year.</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-700 shadow-sm">
+                                <table className="min-w-full divide-y divide-slate-700 text-left">
+                                    <thead className="bg-slate-800">
+                                        <tr>
+                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Product Name</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Total Sold</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Previous Class</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Current Class</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Trend</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-slate-900 divide-y divide-slate-700">
+                                        {compareData.data.map((item, idx) => (
+                                            <tr key={idx} className={`hover:bg-slate-800 transition-colors ${item.criticalDrop ? 'bg-red-900/10' : ''}`}>
+                                                <td className="px-6 py-5 whitespace-nowrap text-base font-bold text-white">
+                                                    <div className="flex items-center gap-2">
+                                                        {item.productName}
+                                                        {item.criticalDrop && (
+                                                            <span className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30">
+                                                                <AlertCircle className="w-3 h-3" /> Critical Drop
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-5 whitespace-nowrap">
+                                                    <span className="inline-flex items-center px-3 py-1 rounded text-sm font-black bg-slate-800 text-gray-100 border border-slate-600 shadow-sm">
+                                                        {item.totalQuantity.toLocaleString()}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-5 whitespace-nowrap text-base text-gray-400 font-bold">
+                                                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-black shadow-sm ${
+                                                        item.previousClass === 'Fast' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                                                        item.previousClass === 'Normal' ? 'bg-slate-600/50 text-gray-300 border border-slate-600' :
+                                                        item.previousClass === 'None' ? 'bg-gray-800 text-gray-500 border border-gray-700' :
+                                                        'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                                                    }`}>
+                                                        {item.previousClass}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-5 whitespace-nowrap">
+                                                    <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-black shadow-sm ${
+                                                        item.currentClass === 'Fast' ? 'bg-cyan-500 text-slate-950' :
+                                                        item.currentClass === 'Normal' ? 'bg-slate-600 text-white' :
+                                                        'bg-orange-500 text-slate-950'
+                                                    }`}>
+                                                        {item.currentClass}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-5 whitespace-nowrap">
+                                                    <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-black shadow-sm ${
+                                                        item.trend === 'Upward' ? 'text-green-400 bg-green-400/10 border border-green-400/20' :
+                                                        item.trend === 'Downward' ? 'text-red-400 bg-red-400/10 border border-red-400/20' :
+                                                        item.trend === 'New Entry' ? 'text-blue-400 bg-blue-400/10 border border-blue-400/20' :
+                                                        'text-gray-400 bg-gray-400/10 border border-gray-400/20'
+                                                    }`}>
+                                                        {item.trend === 'Upward' && <ArrowUpRight className="w-4 h-4 mr-1.5" />}
+                                                        {item.trend === 'Downward' && <ArrowDownRight className="w-4 h-4 mr-1.5" />}
+                                                        {item.trend === 'Stable' && <Minus className="w-4 h-4 mr-1.5" />}
+                                                        {item.trend === 'New Entry' && <Sparkles className="w-4 h-4 mr-1.5" />}
+                                                        {item.trend}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )
+                    )}
+                </>
             )}
 
             {/* Create PO Modal */}

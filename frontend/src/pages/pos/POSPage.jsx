@@ -56,6 +56,7 @@ const POSPage = () => {
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [editingItem, setEditingItem] = useState(null);
   const [globalPatientName, setGlobalPatientName] = useState('');
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
 
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
@@ -332,9 +333,10 @@ const POSPage = () => {
   const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const handleCheckoutSubmit = async () => {
+      const finalAmount = Math.max(0, totalAmount - pointsToRedeem);
       if (paymentMethod === 'Online' && !isOffline) {
           try {
-              const res = await initiatePayment({ amount: totalAmount, provider: 'payhere' });
+              const res = await initiatePayment({ amount: finalAmount, provider: 'payhere' });
               setPaymentTxn(res);
               setShowPaymentGateway(true);
               return;
@@ -384,6 +386,7 @@ const POSPage = () => {
       customerId: customerIdToUse,
       contactEmail: (!customerIdToUse && !showRegisterCustomer) ? contactEmail : '',
       contactPhone: (!customerIdToUse && !showRegisterCustomer) ? contactPhone : '',
+      pointsToRedeem: pointsToRedeem
     };
 
     try {
@@ -395,6 +398,7 @@ const POSPage = () => {
             setShowCheckout(false);
             setShowPaymentGateway(false);
             setCustomer(null);
+            setPointsToRedeem(0);
             setContactEmail('');
             setContactPhone('');
             setShowRegisterCustomer(false);
@@ -412,6 +416,7 @@ const POSPage = () => {
              setCart([]);
              setShowCheckout(false);
              setCustomer(null);
+             setPointsToRedeem(0);
              setContactEmail('');
              setContactPhone('');
              setShowRegisterCustomer(false);
@@ -875,6 +880,7 @@ const POSPage = () => {
                                                      onClick={() => {
                                                          setCustomer(c);
                                                          setCustomerSearch('');
+                                                         setPointsToRedeem(0);
                                                          setCustomers([]);
                                                      }}>
                                                     <div className="font-bold text-slate-700">{c.name}</div>
@@ -907,14 +913,33 @@ const POSPage = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg flex justify-between items-center">
-                                <div>
-                                    <div className="font-bold text-blue-800">{customer.name}</div>
-                                    <div className="text-xs text-blue-600">{customer.phoneNumber}</div>
+                            <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg flex flex-col gap-2">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <div className="font-bold text-blue-800">{customer.name}</div>
+                                        <div className="text-xs text-blue-600">{customer.phoneNumber}</div>
+                                    </div>
+                                    <button onClick={() => { setCustomer(null); setPointsToRedeem(0); }} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded">
+                                        <X size={18} />
+                                    </button>
                                 </div>
-                                <button onClick={() => setCustomer(null)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded">
-                                    <X size={18} />
-                                </button>
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-blue-200">
+                                    <span className="text-sm text-blue-700 font-medium">Points: {customer.loyaltyPoints || 0}</span>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs text-blue-700">Redeem:</label>
+                                        <input 
+                                            type="number"
+                                            min="0"
+                                            max={Math.min(customer.loyaltyPoints || 0, Math.floor(totalAmount))}
+                                            value={pointsToRedeem}
+                                            onChange={e => {
+                                                const val = parseInt(e.target.value) || 0;
+                                                setPointsToRedeem(Math.min(val, customer.loyaltyPoints || 0, Math.floor(totalAmount)));
+                                            }}
+                                            className="w-20 px-2 py-1 text-sm border border-blue-200 rounded outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -992,9 +1017,15 @@ const POSPage = () => {
                             <span className="text-slate-500">Items Count</span>
                             <span className="font-medium text-slate-800">{cart.reduce((a,b)=>a+b.quantity,0)}</span>
                         </div>
+                        {pointsToRedeem > 0 && (
+                            <div className="flex justify-between items-center mb-1 text-emerald-600">
+                                <span className="text-sm">Points Redeemed</span>
+                                <span className="font-medium">- Rs. {pointsToRedeem.toFixed(2)}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between items-center text-xl font-bold mt-2 pt-2 border-t border-slate-200">
                             <span className="text-slate-800">Total To Pay</span>
-                            <span className="text-emerald-700">Rs. {totalAmount.toFixed(2)}</span>
+                            <span className="text-emerald-700">Rs. {Math.max(0, totalAmount - pointsToRedeem).toFixed(2)}</span>
                         </div>
                     </div>
                 </div>

@@ -53,6 +53,10 @@ const saleSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  pointsRedeemed: {
+    type: Number,
+    default: 0
+  },
   refundedAmount: {
     type: Number,
     default: 0

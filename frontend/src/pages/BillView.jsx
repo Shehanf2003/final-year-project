@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Printer } from 'lucide-react';
 
 const BillView = () => {
   const { id } = useParams();
@@ -44,14 +44,22 @@ const BillView = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 py-10 px-4">
-      <div className="max-w-2xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden">
-        <div className="bg-blue-600 text-white p-6 text-center">
+    <div className="min-h-screen bg-gray-100 py-10 px-4 print:bg-white print:p-0">
+      <div className="max-w-2xl mx-auto mb-4 flex justify-end print:hidden">
+        <button
+          onClick={() => window.print()}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow hover:bg-blue-700 flex items-center gap-2 transition-colors font-medium"
+        >
+          <Printer size={18} /> Print Receipt
+        </button>
+      </div>
+      <div className="max-w-2xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden print:shadow-none print:w-full print:max-w-full">
+        <div className="bg-blue-600 text-white p-6 text-center print:bg-white print:text-black print:border-b print:border-gray-200 print:px-0 print:py-4">
           <h1 className="text-3xl font-bold">Pharma ERP</h1>
-          <p className="opacity-90">Official Receipt</p>
+          <p className="opacity-90 print:opacity-100 print:text-gray-600">Official Receipt</p>
         </div>
 
-        <div className="p-6 border-b flex flex-col md:flex-row justify-between gap-4">
+        <div className="p-6 border-b flex flex-col md:flex-row justify-between gap-4 print:px-0 print:py-4 print:flex-row">
           <div>
             <p className="text-sm text-gray-500">Receipt Number</p>
             <p className="font-mono font-bold">{sale.receiptNumber}</p>
@@ -63,7 +71,7 @@ const BillView = () => {
         </div>
 
         {(sale.customerId || sale.contactEmail || sale.contactPhone) && (
-            <div className="p-6 border-b bg-gray-50">
+            <div className="p-6 border-b bg-gray-50 print:bg-white print:px-0 print:py-4">
                 <p className="text-sm text-gray-500 mb-1">Billed To:</p>
                 {sale.customerId && <p className="font-bold">{sale.customerId.name}</p>}
                 {sale.contactEmail && <p className="text-sm">{sale.contactEmail}</p>}
@@ -71,7 +79,7 @@ const BillView = () => {
             </div>
         )}
 
-        <div className="p-6">
+        <div className="p-6 print:px-0 print:py-4">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b text-sm text-gray-500">
@@ -99,18 +107,30 @@ const BillView = () => {
           </table>
         </div>
 
-        <div className="p-6 bg-gray-50 border-t">
+        <div className="p-6 bg-gray-50 border-t print:bg-white print:px-0 print:py-4">
           <div className="flex justify-between items-center mb-2">
             <span className="text-gray-600">Payment Method</span>
             <span className="font-medium">{sale.paymentMethod}</span>
           </div>
+          {sale.pointsRedeemed > 0 && (
+            <>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-600">Subtotal</span>
+                <span className="font-medium">Rs. {(sale.totalAmount + sale.pointsRedeemed).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-600">Points Redeemed</span>
+                <span className="font-medium text-emerald-600">- Rs. {sale.pointsRedeemed.toFixed(2)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between items-center text-xl font-bold border-t border-gray-200 pt-4 mt-2">
             <span>Total Amount</span>
             <span>Rs. {sale.totalAmount.toFixed(2)}</span>
           </div>
         </div>
 
-        <div className="p-4 text-center text-xs text-gray-400">
+        <div className="p-4 text-center text-xs text-gray-400 print:text-gray-600 print:mt-4">
             Thank you for your business!
         </div>
       </div>

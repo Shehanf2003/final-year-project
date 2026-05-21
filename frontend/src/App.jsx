@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { AuthProvider } from './context/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+import { SocketProvider } from './context/SocketContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ModulePage from './pages/ModulePage';
@@ -38,6 +39,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
+          <SocketProvider>
           <Toaster position="top-right" />
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -72,6 +74,7 @@ function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </SocketProvider>
         </AuthProvider>
       </Router>
     </QueryClientProvider>

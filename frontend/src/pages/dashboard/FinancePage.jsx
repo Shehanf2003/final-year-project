@@ -8,7 +8,7 @@ import {
 import { exportToPDF, exportToExcel } from '../../lib/exportUtils';
 import toast from 'react-hot-toast';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
-import { io } from 'socket.io-client';
+import { useSocket } from '../../context/SocketContext';
 import ProfitOptimizer from './ProfitOptimizer';
 import axiosInstance from '../../lib/axios';
 
@@ -34,6 +34,8 @@ const FinancePage = () => {
   const [reportDateRange, setReportDateRange] = useState({ start: '', end: '' });
   const [chartTab, setChartTab] = useState('MONTH');
   const [previewModal, setPreviewModal] = useState({ isOpen: false, type: null, data: [] });
+
+  const socket = useSocket();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -85,23 +87,20 @@ const FinancePage = () => {
   }, [loadData]);
 
   useEffect(() => {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-      const socketUrl = apiUrl.replace(/\/api\/?$/, '');
-      const socketInstance = io(socketUrl, {
-          withCredentials: true,
-      });
+      if (!socket) return;
 
       const handleUpdate = () => {
           if (loadDataRef.current) loadDataRef.current();
       };
 
-      socketInstance.on('FINANCE_UPDATE', handleUpdate);
-      socketInstance.on('STATS_UPDATE', handleUpdate);
+      socket.on('FINANCE_UPDATE', handleUpdate);
+      socket.on('STATS_UPDATE', handleUpdate);
 
       return () => {
-          socketInstance.disconnect();
+          socket.off('FINANCE_UPDATE', handleUpdate);
+          socket.off('STATS_UPDATE', handleUpdate);
       };
-  }, []);
+  }, [socket]);
 
   const handlePaySupplier = async (e) => {
     e.preventDefault();
@@ -165,7 +164,7 @@ const FinancePage = () => {
   const handlePreview = async (type) => {
     try {
         const data = await getFinancialReport(type, reportDateRange.start, reportDateRange.end);
-        if (!data || data.length === 0) {
+        if (!data || (Array.isArray(data) && data.length === 0) || (type === 'PNL' && data.sales?.length === 0 && data.expenses?.length === 0)) {
             return toast.error("No data to preview");
         }
         
@@ -191,6 +190,31 @@ const FinancePage = () => {
                 'Quantity Sold': i.totalQuantity,
                 Revenue: i.totalRevenue
             }));
+        } else if (type === 'PNL') {
+            const totalRevenue = data.sales.reduce((sum, s) => sum + s.totalAmount, 0);
+            const totalCOGS = data.sales.reduce((sum, s) => {
+                return sum + s.items.reduce((itemSum, item) => itemSum + ((item.costPrice || 0) * item.quantity), 0);
+            }, 0);
+            const grossProfit = totalRevenue - totalCOGS;
+            
+            let expensesTotal = 0;
+            const expensesByCategory = data.expenses.reduce((acc, e) => {
+                const cat = e.category || 'Other';
+                acc[cat] = (acc[cat] || 0) + e.amount;
+                expensesTotal += e.amount;
+                return acc;
+            }, {});
+
+            flattened = [
+                { Description: 'Total Revenue', Amount: totalRevenue },
+                { Description: 'Cost of Goods Sold (COGS)', Amount: totalCOGS },
+                { Description: 'Gross Profit', Amount: grossProfit },
+                ...Object.entries(expensesByCategory).map(([cat, amount]) => ({
+                    Description: `Expense: ${cat}`, Amount: amount
+                })),
+                { Description: 'Total Expenses', Amount: expensesTotal },
+                { Description: 'Net Profit', Amount: grossProfit - expensesTotal }
+            ];
         }
         setPreviewModal({ isOpen: true, type, data: flattened });
     } catch (error) {
@@ -203,7 +227,7 @@ const FinancePage = () => {
         let flattened = preloadedData;
         if (!flattened) {
             const data = await getFinancialReport(type, reportDateRange.start, reportDateRange.end);
-            if (!data || data.length === 0) {
+            if (!data || (Array.isArray(data) && data.length === 0) || (type === 'PNL' && data.sales?.length === 0 && data.expenses?.length === 0)) {
                 return toast.error("No data to export");
             }
             if (type === 'SALES') {
@@ -227,6 +251,31 @@ const FinancePage = () => {
                     'Quantity Sold': i.totalQuantity,
                     Revenue: i.totalRevenue
                 }));
+            } else if (type === 'PNL') {
+                const totalRevenue = data.sales.reduce((sum, s) => sum + s.totalAmount, 0);
+                const totalCOGS = data.sales.reduce((sum, s) => {
+                    return sum + s.items.reduce((itemSum, item) => itemSum + ((item.costPrice || 0) * item.quantity), 0);
+                }, 0);
+                const grossProfit = totalRevenue - totalCOGS;
+                
+                let expensesTotal = 0;
+                const expensesByCategory = data.expenses.reduce((acc, e) => {
+                    const cat = e.category || 'Other';
+                    acc[cat] = (acc[cat] || 0) + e.amount;
+                    expensesTotal += e.amount;
+                    return acc;
+                }, {});
+
+                flattened = [
+                    { Description: 'Total Revenue', Amount: totalRevenue },
+                    { Description: 'Cost of Goods Sold (COGS)', Amount: totalCOGS },
+                    { Description: 'Gross Profit', Amount: grossProfit },
+                    ...Object.entries(expensesByCategory).map(([cat, amount]) => ({
+                        Description: `Expense: ${cat}`, Amount: amount
+                    })),
+                    { Description: 'Total Expenses', Amount: expensesTotal },
+                    { Description: 'Net Profit', Amount: grossProfit - expensesTotal }
+                ];
             }
         }
 
@@ -340,7 +389,7 @@ const FinancePage = () => {
                         value={chartTab === 'MONTH' ? stats.netProfit : stats.todayProfit} 
                         prevValue={chartTab === 'MONTH' ? stats.prevMonthProfit : stats.prevDayProfit}
                         periodLabel={chartTab === 'MONTH' ? 'month' : 'day'}
-                        icon={FileText} color="amber" 
+                        icon={FileText} color={(chartTab === 'MONTH' ? stats.netProfit : stats.todayProfit) < 0 ? 'rose' : 'amber'} 
                     />
                 </div>
 
@@ -351,12 +400,12 @@ const FinancePage = () => {
                                 { name: 'Revenue', amount: stats.totalRevenue || 0, fill: '#10b981' },
                                 { name: 'COGS', amount: stats.totalCOGS || 0, fill: '#3b82f6' },
                                 { name: 'Expenses', amount: stats.totalExpenses || 0, fill: '#f43f5e' },
-                                { name: 'Net Profit', amount: stats.netProfit || 0, fill: '#f59e0b' },
+                                { name: 'Net Profit', amount: stats.netProfit || 0, fill: (stats.netProfit || 0) < 0 ? '#ef4444' : '#f59e0b' },
                             ] : [
                                 { name: 'Revenue', amount: stats.todayRevenue || 0, fill: '#10b981' },
                                 { name: 'COGS', amount: stats.todayCOGS || 0, fill: '#3b82f6' },
                                 { name: 'Expenses', amount: stats.todayExpenses || 0, fill: '#f43f5e' },
-                                { name: 'Net Profit', amount: stats.todayProfit || 0, fill: '#f59e0b' },
+                                { name: 'Net Profit', amount: stats.todayProfit || 0, fill: (stats.todayProfit || 0) < 0 ? '#ef4444' : '#f59e0b' },
                             ]}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="name" />
@@ -367,12 +416,12 @@ const FinancePage = () => {
                                         { name: 'Revenue', amount: stats.totalRevenue || 0, fill: '#10b981' },
                                         { name: 'COGS', amount: stats.totalCOGS || 0, fill: '#3b82f6' },
                                         { name: 'Expenses', amount: stats.totalExpenses || 0, fill: '#f43f5e' },
-                                        { name: 'Net Profit', amount: stats.netProfit || 0, fill: '#f59e0b' },
+                                        { name: 'Net Profit', amount: stats.netProfit || 0, fill: (stats.netProfit || 0) < 0 ? '#ef4444' : '#f59e0b' },
                                     ] : [
                                         { name: 'Revenue', amount: stats.todayRevenue || 0, fill: '#10b981' },
                                         { name: 'COGS', amount: stats.todayCOGS || 0, fill: '#3b82f6' },
                                         { name: 'Expenses', amount: stats.todayExpenses || 0, fill: '#f43f5e' },
-                                        { name: 'Net Profit', amount: stats.todayProfit || 0, fill: '#f59e0b' },
+                                        { name: 'Net Profit', amount: stats.todayProfit || 0, fill: (stats.todayProfit || 0) < 0 ? '#ef4444' : '#f59e0b' },
                                     ]).map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.fill} />
                                     ))}
@@ -562,6 +611,18 @@ const FinancePage = () => {
                             <button onClick={() => handleExport('EXPENSES', 'EXCEL')} className="px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">Excel</button>
                         </div>
                     </div>
+
+                    <div className="p-4 border border-gray-200 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between hover:bg-gray-50 gap-4">
+                        <div>
+                            <h4 className="font-medium text-gray-900">Profit & Loss Report</h4>
+                            <p className="text-sm text-gray-500">Comprehensive overview of revenue, costs, and expenses.</p>
+                        </div>
+                        <div className="flex gap-2">
+                             <button onClick={() => handlePreview('PNL')} className="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded hover:bg-blue-100 border border-blue-200">Preview</button>
+                             <button onClick={() => handleExport('PNL', 'PDF')} className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-700 rounded hover:bg-red-100 border border-red-200">PDF</button>
+                            <button onClick={() => handleExport('PNL', 'EXCEL')} className="px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">Excel</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         )}
@@ -726,7 +787,9 @@ const FinancePage = () => {
                             {previewModal.data.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50">
                                     {Object.values(row).map((val, i) => (
-                                        <td key={i} className="px-4 py-3">{typeof val === 'number' ? val.toLocaleString() : val}</td>
+                                        <td key={i} className={`px-4 py-3 ${typeof val === 'number' && val < 0 ? 'text-red-600 font-semibold' : ''}`}>
+                                            {typeof val === 'number' ? val.toLocaleString() : val}
+                                        </td>
                                     ))}
                                 </tr>
                             ))}

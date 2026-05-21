@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Sidebar from './dashboard/Sidebar';
 import StatCard from './dashboard/StatCard';
 import RevenueChart from './dashboard/RevenueChart';
@@ -41,17 +41,28 @@ const Dashboard = () => {
     }
   }, [dateRange.start, dateRange.end, fetchStats]);
 
+  // Keep a fresh reference to fetchStats to avoid React stale closures
+  const fetchStatsRef = useRef(fetchStats);
+  useEffect(() => {
+    fetchStatsRef.current = fetchStats;
+  }, [fetchStats]);
+
   useEffect(() => {
       if (!socket) return;
 
-      socket.on('DASHBOARD_UPDATE', fetchStats);
-      socket.on('STATS_UPDATE', fetchStats);
+      const handleUpdate = () => {
+          console.log('Socket event received! Refreshing dashboard...');
+          if (fetchStatsRef.current) fetchStatsRef.current();
+      };
+
+      socket.on('DASHBOARD_UPDATE', handleUpdate);
+      socket.on('STATS_UPDATE', handleUpdate);
 
       return () => {
-          socket.off('DASHBOARD_UPDATE', fetchStats);
-          socket.off('STATS_UPDATE', fetchStats);
+          socket.off('DASHBOARD_UPDATE', handleUpdate);
+          socket.off('STATS_UPDATE', handleUpdate);
       };
-  }, [socket, fetchStats]);
+  }, [socket]);
 
   const handleAddExpense = async (e) => {
     e.preventDefault();

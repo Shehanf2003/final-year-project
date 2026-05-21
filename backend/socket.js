@@ -9,10 +9,17 @@ export const initSocket = (server) => {
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       credentials: true,
     },
+    pingTimeout: 60000, // Wait 60 seconds before disconnecting a sluggish client
+    pingInterval: 25000, // Send a ping every 25 seconds
   });
 
   io.on('connection', (socket) => {
     console.log(`Socket client connected: ${socket.id}`);
+
+    // Respond to custom client pings to keep the connection active
+    socket.on('CLIENT_PING', () => {
+      socket.emit('SERVER_PONG');
+    });
 
     // Relay live simulation updates to all connected frontends
     socket.on('SIMULATED_SALE', () => {

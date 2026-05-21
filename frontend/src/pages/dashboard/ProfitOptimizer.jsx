@@ -9,7 +9,7 @@ const ProfitOptimizer = () => {
     utility_costs: 0,
     innovator_brand_percentage: 0,
     lkr_devaluation_percent: 0,
-    days_to_predict: 30,
+    // Removed days_to_predict as backend now calculates remaining days dynamically
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -25,7 +25,6 @@ const ProfitOptimizer = () => {
     setResult(null);
     
     try {
-      // Note: Adjust the port below if your FastAPI instance is running on a different one
       const response = await axios.get('http://localhost:8000/api/ml/optimize-profit', {
         params: formData,
       });
@@ -64,12 +63,10 @@ const ProfitOptimizer = () => {
           <label className="block text-sm font-medium text-gray-700">LKR Devaluation %</label>
           <input type="number" name="lkr_devaluation_percent" step="0.1" value={formData.lkr_devaluation_percent} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Days to Predict</label>
-          <input type="number" name="days_to_predict" value={formData.days_to_predict} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" />
-        </div>
-        <div className="md:col-span-2 lg:col-span-3 flex justify-end mt-2">
-          <button type="submit" disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700 transition disabled:bg-blue-300">
+        {/* Days to Predict input removed */}
+        
+        <div className="md:col-span-2 lg:col-span-1 flex items-end mt-2">
+          <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700 transition disabled:bg-blue-300">
             {loading ? 'Running Optimizer...' : 'Run Optimization AI'}
           </button>
         </div>
@@ -77,22 +74,35 @@ const ProfitOptimizer = () => {
 
       {result && (
         <div className="border-t pt-6 mt-4">
-          <h3 className="text-xl font-semibold mb-4 text-gray-800">Optimization Results ({result.periodDays} Days Forecast)</h3>
+          <h3 className="text-xl font-semibold mb-4 text-gray-800">Optimization Results for Current Month</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-gray-50 p-4 rounded border border-gray-200">
-              <p className="text-sm text-gray-500 font-medium">Forecasted Gross Profit</p>
-              <p className="text-2xl font-bold text-gray-800">Rs. {result.financials.forecastedGrossProfit.toLocaleString()}</p>
+          {/* Top Tier: Profit Breakdown */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="bg-blue-50 p-4 rounded border border-blue-200">
+              <p className="text-sm text-blue-700 font-medium">Actual MTD Gross Profit</p>
+              <p className="text-2xl font-bold text-blue-900">Rs. {result.financials.actualMtdGrossProfit?.toLocaleString()}</p>
             </div>
+            <div className="bg-gray-50 p-4 rounded border border-gray-200">
+              <p className="text-sm text-gray-500 font-medium">Forecasted Remaining ({result.periodDaysRemaining} Days)</p>
+              <p className="text-2xl font-bold text-gray-800">Rs. {result.financials.forecastedRemainingGrossProfit?.toLocaleString()}</p>
+            </div>
+            <div className="bg-indigo-50 p-4 rounded border border-indigo-200">
+              <p className="text-sm text-indigo-700 font-medium">Total Expected Gross Profit</p>
+              <p className="text-2xl font-bold text-indigo-900">Rs. {result.financials.totalExpectedGrossProfit?.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* Bottom Tier: Expense Targets */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div className={`p-4 rounded border ${result.isAchievable ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
               <p className="text-sm text-gray-500 font-medium">Target Allowed Expenses</p>
               <p className={`text-2xl font-bold ${result.isAchievable ? 'text-green-700' : 'text-red-700'}`}>
-                Rs. {result.financials.targetAllowedExpenses.toLocaleString()}
+                Rs. {result.financials.targetAllowedExpenses?.toLocaleString()}
               </p>
             </div>
             <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
               <p className="text-sm text-yellow-700 font-medium">Expense Reduction Needed</p>
-              <p className="text-2xl font-bold text-yellow-800">Rs. {result.financials.reductionNeeded.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-yellow-800">Rs. {result.financials.reductionNeeded?.toLocaleString()}</p>
             </div>
           </div>
 

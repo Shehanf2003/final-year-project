@@ -10,6 +10,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, silhouette_
 from prophet import Prophet
 import os
 import datetime
+import calendar
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 import pulp
@@ -55,61 +56,48 @@ def fmcg_clustering(days: int = 365, db = Depends(get_db)):
     
     recent_cutoff = now - datetime.timedelta(days=30)
     
-    sales = list(db.sales.find({"createdAt": {"$gte": cutoff_date}}))
-    if not sales:
+    # 1. Use aggregation pipeline to handle unwinding, weighted calculation, and grouping in MongoDB
+    pipeline = [
+        {"$match": {"createdAt": {"$gte": cutoff_date}}},
+        {"$unwind": "$items"},
+        {"$group": {
+            "_id": "$items.productId",
+            "actual_quantity": {"$sum": "$items.quantity"},
+            "order_frequency": {"$sum": 1},
+            "total_weighted_quantity": {
+                "$sum": {
+                    "$multiply": [
+                        "$items.quantity",
+                        {"$cond": [{"$gte": ["$createdAt", recent_cutoff]}, 2.0, 1.0]}
+                    ]
+                }
+            }
+        }}
+    ]
+    
+    sales_data = list(db.sales.aggregate(pipeline))
+    if not sales_data:
         raise HTTPException(status_code=404, detail="Not enough sales data for clustering")
 
-    data = []
-    for sale in sales:
-        sale_date = sale.get("createdAt")
-        
-        if isinstance(sale_date, str):
-            try:
-                sale_date = datetime.datetime.fromisoformat(sale_date.replace('Z', '+00:00'))
-            except ValueError:
-                continue
-                
-        if not isinstance(sale_date, datetime.datetime):
-            continue
+    df = pd.DataFrame(sales_data)
+    df['productId'] = df['_id'].astype(str)
 
-        if sale_date.tzinfo is not None:
-            sale_date = sale_date.replace(tzinfo=None)
-
-        weight = 2.0 if sale_date >= recent_cutoff else 1.0
-
-        for item in sale.get("items", []):
-            data.append({
-                "productId": str(item["productId"]),
-                "weighted_quantity": item["quantity"] * weight,
-                "actual_quantity": item["quantity"]
-            })
-    
-    df = pd.DataFrame(data)
-    if df.empty:
-        raise HTTPException(status_code=404, detail="No items found in recent sales")
-
-    product_stats = df.groupby('productId').agg(
-        total_weighted_quantity=('weighted_quantity', 'sum'),
-        actual_quantity=('actual_quantity', 'sum'),
-        order_frequency=('actual_quantity', 'count')
-    ).reset_index()
-
-    if len(product_stats) < 3:
+    if len(df) < 3:
         raise HTTPException(
             status_code=400, 
-            detail=f"Need at least 3 distinct products to form Fast/Normal/Slow clusters. Only found {len(product_stats)}."
+            detail=f"Need at least 3 distinct products to form Fast/Normal/Slow clusters. Only found {len(df)}."
         )
 
-    X = product_stats[['total_weighted_quantity', 'order_frequency']]
+    X = df[['total_weighted_quantity', 'order_frequency']]
     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
-    product_stats['cluster'] = kmeans.fit_predict(X)
+    df['cluster'] = kmeans.fit_predict(X)
 
     try:
-        score = float(silhouette_score(X, product_stats['cluster']))
+        score = float(silhouette_score(X, df['cluster']))
     except ValueError:
         score = None
 
-    cluster_centers = product_stats.groupby('cluster')['total_weighted_quantity'].mean().sort_values(ascending=False)
+    cluster_centers = df.groupby('cluster')['total_weighted_quantity'].mean().sort_values(ascending=False)
     fast_cluster = cluster_centers.index[0]
     normal_cluster = cluster_centers.index[1]
     slow_cluster = cluster_centers.index[2]
@@ -119,14 +107,25 @@ def fmcg_clustering(days: int = 365, db = Depends(get_db)):
         if cluster_id == normal_cluster: return "Normal"
         return "Slow"
 
-    product_stats['fmcg_class'] = product_stats['cluster'].apply(assign_label)
+    df['fmcg_class'] = df['cluster'].apply(assign_label)
+
+    # 2. Prevent N+1 query problem by batch-fetching all product names
+    product_ids = []
+    for pid in df['productId']:
+        try:
+            product_ids.append(ObjectId(pid))
+        except InvalidId:
+            pass
+
+    products_cursor = db.products.find({"_id": {"$in": product_ids}}, {"name": 1})
+    product_names = {str(p["_id"]): p.get("name", "Unknown") for p in products_cursor}
 
     results = []
-    for _, row in product_stats.iterrows():
-        product = db.products.find_one({"_id": ObjectId(row['productId'])})
+    for _, row in df.iterrows():
+        prod_id = row['productId']
         results.append({
-            "productId": row['productId'],
-            "productName": product['name'] if product else "Unknown",
+            "productId": prod_id,
+            "productName": product_names.get(prod_id, "Unknown"),
             "totalQuantity": int(row['actual_quantity']),
             "seasonalScore": round(float(row['total_weighted_quantity']), 2),
             "orderFrequency": int(row['order_frequency']),
@@ -137,6 +136,125 @@ def fmcg_clustering(days: int = 365, db = Depends(get_db)):
     
     return {
         "silhouetteScore": round(score, 3) if score is not None else None,
+        "data": sorted_results
+    }
+
+
+def get_month_clusters(year: int, month: int, db) -> tuple:
+    """Helper function to run K-Means for a specific month and return (classes_dict, stats_dict)"""
+    _, last_day = calendar.monthrange(year, month)
+    start_date = datetime.datetime(year, month, 1, tzinfo=datetime.timezone.utc)
+    end_date = datetime.datetime(year, month, last_day, 23, 59, 59, tzinfo=datetime.timezone.utc)
+    
+    # Push the heavy grouping computations to the database using an aggregation pipeline
+    pipeline = [
+        {"$match": {"createdAt": {"$gte": start_date, "$lte": end_date}}},
+        {"$unwind": "$items"},
+        {"$group": {
+            "_id": "$items.productId",
+            "quantity": {"$sum": "$items.quantity"},
+            "frequency": {"$sum": 1}
+        }}
+    ]
+    
+    sales_data = list(db.sales.aggregate(pipeline))
+    if not sales_data: return {}, {}
+
+    df = pd.DataFrame(sales_data)
+    if df.empty: return {}, {}
+    
+    df['productId'] = df['_id'].astype(str)
+    if len(df) < 3: return {}, {} # Not enough data to cluster
+
+    X = df[['quantity']]
+    kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+    df['cluster'] = kmeans.fit_predict(X)
+
+    cluster_centers = df.groupby('cluster')['quantity'].mean().sort_values(ascending=False)
+    
+    def assign_label(cluster_id):
+        if cluster_id == cluster_centers.index[0]: return "Fast"
+        if cluster_id == cluster_centers.index[1]: return "Normal"
+        return "Slow"
+
+    df['class'] = df['cluster'].apply(assign_label)
+    
+    classes_dict = pd.Series(df['class'].values, index=df['productId']).to_dict()
+    stats_dict = df.set_index('productId')[['quantity', 'frequency']].to_dict('index')
+    
+    return classes_dict, stats_dict
+
+
+@app.get("/api/ml/fmcg-clustering/monthly-compare")
+def fmcg_clustering_monthly_compare(year: int, month: int, db = Depends(get_db)):
+    """
+    Evaluates FMCG classes for the target month and compares them to the previous month,
+    flagging products that have downgraded. Optimized to reduce database load.
+    """
+    # 1. Calculate previous month and year
+    prev_month = 12 if month == 1 else month - 1
+    prev_year = year - 1 if month == 1 else year
+
+    # 2. Get the classification dictionaries for both months
+    prev_month_classes, _ = get_month_clusters(prev_year, prev_month, db)
+    current_month_classes, current_month_stats = get_month_clusters(year, month, db)
+
+    if not current_month_classes:
+        raise HTTPException(status_code=404, detail=f"Not enough data to form clusters for {year}-{month}")
+
+    # 3. Define a scoring system to evaluate trends mathematically
+    class_scores = {"Fast": 3, "Normal": 2, "Slow": 1, "None": 0}
+
+    # 4. Eliminate N+1 query problem by fetching all product names in a single batch
+    product_ids = []
+    for pid in current_month_stats.keys():
+        try:
+            product_ids.append(ObjectId(pid))
+        except InvalidId:
+            pass
+            
+    products_cursor = db.products.find({"_id": {"$in": product_ids}}, {"name": 1})
+    product_names = {str(p["_id"]): p.get("name", "Unknown") for p in products_cursor}
+
+    # 5. Build the final results with comparison logic
+    results = []
+    for prod_id, stats in current_month_stats.items():
+        current_class = current_month_classes.get(prod_id, "Slow")
+        prev_class = prev_month_classes.get(prod_id, "None")
+        
+        # Determine the trend
+        current_score = class_scores[current_class]
+        prev_score = class_scores[prev_class]
+        
+        if prev_score == 0:
+            trend = "New Entry"
+        elif current_score > prev_score:
+            trend = "Upward"
+        elif current_score < prev_score:
+            trend = "Downward"
+        else:
+            trend = "Stable"
+            
+        # Check for the specific critical drop (Fast -> Slow)
+        critical_drop = (prev_class == "Fast" and current_class == "Slow")
+
+        results.append({
+            "productId": prod_id,
+            "productName": product_names.get(prod_id, "Unknown"),
+            "totalQuantity": int(stats['quantity']),
+            "orderFrequency": int(stats['frequency']),
+            "currentClass": current_class,
+            "previousClass": prev_class,
+            "trend": trend,
+            "criticalDrop": critical_drop # Boolean flag for frontend UI
+        })
+
+    # Sort so that Critical Drops appear at the very top, followed by Fast items
+    sorted_results = sorted(results, key=lambda x: (not x['criticalDrop'], x['currentClass'] != 'Fast', -x['totalQuantity']))
+    
+    return {
+        "targetMonth": f"{year}-{month:02d}",
+        "comparisonMonth": f"{prev_year}-{prev_month:02d}",
         "data": sorted_results
     }
 
@@ -182,7 +300,17 @@ def demand_forecast(product_id: str, days_to_predict: int = 30, db = Depends(get
     daily_sales.set_index('ds', inplace=True)
     daily_sales = daily_sales.asfreq('D', fill_value=0).reset_index()
 
-    model = Prophet(yearly_seasonality='auto', weekly_seasonality=True, daily_seasonality=False)
+    # Handle Extreme Outliers: Set top 1% of spikes to None so Prophet ignores them
+    upper_limit = daily_sales['y'].quantile(0.99)
+    daily_sales.loc[daily_sales['y'] > upper_limit, 'y'] = None
+
+    model = Prophet(
+        yearly_seasonality='auto', 
+        weekly_seasonality=True, 
+        daily_seasonality=False,
+        changepoint_prior_scale=0.1
+    )
+    model.add_seasonality(name='monthly', period=30.5, fourier_order=5)
     
     model.add_country_holidays(country_name='LK') 
     model.fit(daily_sales)
@@ -238,11 +366,21 @@ def evaluate_forecast(product_id: str, test_days: int = 10, db = Depends(get_db)
     daily_sales.set_index('ds', inplace=True)
     daily_sales = daily_sales.asfreq('D', fill_value=0).reset_index()
 
-    train = daily_sales.iloc[:-test_days]
-    actual_test = daily_sales.iloc[-test_days:]
+    train = daily_sales.iloc[:-test_days].copy()
+    actual_test = daily_sales.iloc[-test_days:].copy()
+
+    # Handle Extreme Outliers (only in training data to preserve test metrics)
+    upper_limit = train['y'].quantile(0.99)
+    train.loc[train['y'] > upper_limit, 'y'] = None
 
     try:
-        model = Prophet(yearly_seasonality='auto', weekly_seasonality=True, daily_seasonality=False)
+        model = Prophet(
+            yearly_seasonality='auto', 
+            weekly_seasonality=True, 
+            daily_seasonality=False,
+            changepoint_prior_scale=0.1
+        )
+        model.add_seasonality(name='monthly', period=30.5, fourier_order=5)
         model.add_country_holidays(country_name='LK')
         model.fit(train)
     except Exception as e:
@@ -279,22 +417,34 @@ def optimize_profit(
     utility_costs: float = 0.0,
     innovator_brand_percentage: float = 0.0,
     lkr_devaluation_percent: float = 0.0,
-    days_to_predict: int = 30,
     db = Depends(get_db)
 ):
     """
-    Uses Prophet to forecast store-wide Gross Profit, then prescribes 
-    expense reductions and operational strategies using PuLP Integer Optimization.
+    Calculates Actual Month-to-Date Gross Profit, uses Prophet to forecast the 
+    remaining days of the current month, and prescribes realistic expense reductions.
     """
+    # 1. Real-World Calendar Logic
+    now = datetime.datetime.now()
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    days_passed = now.day
+    days_remaining = max(1, days_in_month - days_passed)
+    current_ym = now.strftime("%Y-%m")
+
+    # 2. Resilient DB Pipeline (Fixed Timezones & Null Costs)
     pipeline = [
         {"$unwind": "$items"},
         {"$match": {"status": {"$ne": "returned"}}},
         {"$project": {
-            "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$createdAt"}},
+            # Locked to Sri Lanka Time to prevent UTC day-shifting
+            "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$createdAt", "timezone": "+05:30"}},
+            "year_month": {"$dateToString": {"format": "%Y-%m", "date": "$createdAt", "timezone": "+05:30"}},
             "gross_profit": {
                 "$multiply": [
-                    {"$subtract": ["$items.price", "$items.costPrice"]},
-                    "$items.quantity"
+                    {"$subtract": [
+                        {"$ifNull": ["$items.price", 0]}, 
+                        {"$ifNull": ["$items.costPrice", 0]}
+                    ]},
+                    {"$ifNull": ["$items.quantity", 1]}
                 ]
             }
         }}
@@ -305,36 +455,58 @@ def optimize_profit(
         raise HTTPException(status_code=400, detail="Not enough historical data to forecast profit.")
 
     df = pd.DataFrame(sales)
+    
+    # 3. Calculate MTD Gross Profit (Money already in the bank)
+    mtd_df = df[df['year_month'] == current_ym]
+    mtd_gross_profit = float(mtd_df['gross_profit'].sum())
+
+    # 4. Prepare data for Prophet
     df['ds'] = pd.to_datetime(df['date'])
     df.rename(columns={'gross_profit': 'y'}, inplace=True)
     
     daily_profit = df.groupby('ds')['y'].sum().reset_index()
     daily_profit.set_index('ds', inplace=True)
+    # Fill actual zero-sales days with 0 instead of NaN
     daily_profit = daily_profit.asfreq('D', fill_value=0).reset_index()
 
+    # 5. Fix Outlier Handling (Clip instead of Delete)
+    upper_limit = daily_profit['y'].quantile(0.99)
+    daily_profit['y'] = daily_profit['y'].clip(upper=upper_limit)
+
+    # 6. Train the Model
     try:
-        model = Prophet(yearly_seasonality='auto', weekly_seasonality=True, daily_seasonality=False)
+        model = Prophet(
+            yearly_seasonality='auto', 
+            weekly_seasonality=True, 
+            daily_seasonality=False,
+            changepoint_prior_scale=0.15,
+            seasonality_mode='multiplicative'
+        )
         model.add_country_holidays(country_name='LK')
         model.fit(daily_profit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Model training failed: {str(e)}")
 
-    future = model.make_future_dataframe(periods=days_to_predict)
+    # 7. Predict ONLY the remaining days in the current month
+    future = model.make_future_dataframe(periods=days_remaining)
     forecast = model.predict(future)
-    future_forecast = forecast.tail(days_to_predict)
+    future_forecast = forecast.tail(days_remaining)
     
-    forecasted_gross_profit = float(future_forecast['yhat'].apply(lambda x: max(0, x)).sum())
+    forecasted_remaining_gross_profit = float(future_forecast['yhat'].apply(lambda x: max(0, x)).sum())
 
-    target_expenses = forecasted_gross_profit - target_net_profit
+    # 8. The Math Fix: Combine Actuals with Forecasts
+    total_expected_gross_profit = mtd_gross_profit + forecasted_remaining_gross_profit
+    
+    target_expenses = total_expected_gross_profit - target_net_profit
     expense_reduction_needed = current_monthly_expenses - target_expenses
     
     suggestions = []
     is_achievable = bool(target_expenses >= 0)
 
+    # 9. Optimizer Logic 
     if not is_achievable:
-        suggestions.append("Critical: Target profit exceeds forecasted Gross Profit. Expense cuts alone are insufficient; you must increase sales volume or retail prices.")
+        suggestions.append("Critical: Target profit exceeds total expected Gross Profit for this month. Expense cuts alone are insufficient; you must increase sales volume or retail prices.")
     elif expense_reduction_needed > 0:
-        
         db_actions = list(db.optimization_actions.find({"isActive": True}))
         action_pool = []
         
@@ -356,11 +528,9 @@ def optimize_profit(
             suggestions.append("Warning: No active optimization actions found in the database. Please add actions to enable optimizer.")
         else:
             prob = pulp.LpProblem("Pharmacy_Expense_Optimization", pulp.LpMinimize)
-
             action_vars = pulp.LpVariable.dicts("Action", [action["id"] for action in action_pool], cat='Binary')
-
+            
             prob += pulp.lpSum([action["disruption"] * action_vars[action["id"]] for action in action_pool]), "Total_Disruption"
-
             prob += pulp.lpSum([action["savings"] * action_vars[action["id"]] for action in action_pool]) >= expense_reduction_needed, "Meet_Savings_Target"
 
             if utility_costs <= (0.10 * target_net_profit) and "green_fin" in action_vars:
@@ -379,10 +549,10 @@ def optimize_profit(
             else:
                 suggestions.append(f"Warning: The mathematical optimizer could not find a combination of actions to reach the Rs. {round(expense_reduction_needed, 2)} target. Consider revising your Net Profit target.")
     else:
-        suggestions.append("Excellent: Your current monthly expenses are already below the target allowed expenses. No expense reductions are needed to achieve your target net profit.")
+        suggestions.append("Excellent: Based on your current Month-to-Date profit and forecasted volume, you are already on track to hit or exceed your target. No expense reductions are needed.")
 
+    # 10. Alerts
     active_alerts = []
-    
     if expense_reduction_needed > 0 and innovator_brand_percentage > 20.0:
         active_alerts.append({
             "type": "Margin Maximization",
@@ -396,9 +566,11 @@ def optimize_profit(
         })
 
     return {
-        "periodDays": days_to_predict,
+        "periodDaysRemaining": days_remaining,
         "financials": {
-            "forecastedGrossProfit": round(forecasted_gross_profit, 2),
+            "actualMtdGrossProfit": round(mtd_gross_profit, 2),
+            "forecastedRemainingGrossProfit": round(forecasted_remaining_gross_profit, 2),
+            "totalExpectedGrossProfit": round(total_expected_gross_profit, 2),
             "targetNetProfit": round(target_net_profit, 2),
             "currentExpenses": round(current_monthly_expenses, 2),
             "targetAllowedExpenses": max(0, round(target_expenses, 2)),

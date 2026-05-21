@@ -33,6 +33,7 @@ const saleSchema = z.object({
   prescriptionId: z.string().optional(),
   contactEmail: z.string().email().optional().or(z.literal('')),
   contactPhone: z.string().optional(),
+  pointsToRedeem: z.number().int().min(0).optional().default(0),
 });
 
 const customerSchema = z.object({
@@ -66,6 +67,18 @@ export const createSale = async (req, res) => {
     }
 
     const validatedData = saleSchema.parse(req.body);
+
+    if (validatedData.pointsToRedeem > 0) {
+      if (!validatedData.customerId) {
+        throw new Error("Cannot redeem points without a selected customer");
+      }
+      const customer = await Customer.findById(validatedData.customerId).session(session);
+      if (!customer) throw new Error("Customer not found");
+
+      if (customer.loyaltyPoints < validatedData.pointsToRedeem) {
+        throw new Error(`Insufficient loyalty points. Available: ${customer.loyaltyPoints}`);
+      }
+    }
 
     let totalAmount = 0;
     const processedItems = [];
@@ -118,10 +131,19 @@ export const createSale = async (req, res) => {
       await batch.save({ session });
     }
 
+    // Apply loyalty points discount (Assuming 1 point = Rs. 1)
+    if (validatedData.pointsToRedeem > 0) {
+      if (validatedData.pointsToRedeem > totalAmount) {
+        throw new Error("Cannot redeem points exceeding the total amount");
+      }
+      totalAmount -= validatedData.pointsToRedeem;
+    }
+
     const sale = new Sale({
       receiptNumber: `RCPT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       items: processedItems,
       totalAmount,
+      pointsRedeemed: validatedData.pointsToRedeem,
       paymentMethod: validatedData.paymentMethod,
       customerId: validatedData.customerId,
       prescriptionId: validatedData.prescriptionId,
@@ -136,14 +158,15 @@ export const createSale = async (req, res) => {
     let customerPhone = validatedData.contactPhone;
 
     if (validatedData.customerId) {
-        const points = Math.floor(totalAmount / 100);
-        const customer = await Customer.findByIdAndUpdate(validatedData.customerId, {
-            $inc: { loyaltyPoints: points }
+        const pointsEarned = Math.floor(totalAmount / 100);
+        const netPointsChange = pointsEarned - (validatedData.pointsToRedeem || 0);
+        const updatedCustomer = await Customer.findByIdAndUpdate(validatedData.customerId, {
+            $inc: { loyaltyPoints: netPointsChange }
         }, { new: true, session });
 
-        if (customer) {
-            if (!customerEmail && customer.email) customerEmail = customer.email;
-            if (!customerPhone && customer.phoneNumber) customerPhone = customer.phoneNumber;
+        if (updatedCustomer) {
+            if (!customerEmail && updatedCustomer.email) customerEmail = updatedCustomer.email;
+            if (!customerPhone && updatedCustomer.phoneNumber) customerPhone = updatedCustomer.phoneNumber;
         }
     }
 
@@ -158,6 +181,7 @@ export const createSale = async (req, res) => {
 
     const io = getIO();
     if (io) {
+        console.log("Emitting live updates to frontends...");
         io.emit('DASHBOARD_UPDATE');
         io.emit('STATS_UPDATE');
         io.emit('FINANCE_UPDATE');
