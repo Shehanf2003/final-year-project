@@ -18,7 +18,10 @@ import { useReactToPrint } from 'react-to-print';
 const POSPage = () => {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    const savedCart = localStorage.getItem('pos_cart');
+    return savedCart ? JSON.parse(savedCart) : [];
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
@@ -64,6 +67,10 @@ const POSPage = () => {
   const searchInputRef = useRef(null);
 
   useEffect(() => {
+    localStorage.setItem('pos_cart', JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
@@ -75,7 +82,32 @@ const POSPage = () => {
   }, []);
 
   useEffect(() => {
-    if (user && !isOffline) {
+    const preventRefresh = (e) => {
+      if (isOffline) {
+        if (e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.metaKey && e.key === 'r')) {
+          e.preventDefault();
+          toast.error("Page refresh is disabled while offline to prevent data loss.");
+        }
+      }
+    };
+
+    const handleBeforeUnload = (e) => {
+      if (isOffline) {
+        e.preventDefault();
+        e.returnValue = ''; // Required for Chrome to show the prompt
+      }
+    };
+
+    window.addEventListener('keydown', preventRefresh);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('keydown', preventRefresh);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isOffline]);
+
+  useEffect(() => {
+    if (user) {
       checkShiftStatus();
     }
   }, [user, isOffline]);
@@ -106,6 +138,7 @@ const POSPage = () => {
       if (now.getHours() === 0 && now.getMinutes() === 0 && shift) {
         toast.error("Shift auto-closed at midnight.");
         setShift(null);
+        localStorage.removeItem('pos_shift');
           if (user?.role !== 'admin') {
             setShowOpenShiftModal(true);
           }
@@ -123,16 +156,30 @@ const POSPage = () => {
   }, [isOffline]);
 
   const checkShiftStatus = async () => {
+      if (isOffline) {
+          const savedShift = localStorage.getItem('pos_shift');
+          if (savedShift) {
+              setShift(JSON.parse(savedShift));
+          }
+          return;
+      }
       try {
-          if (isOffline) return;
           const current = await getCurrentShift();
           if (current) {
               setShift(current);
-          } else if (user?.role !== 'admin') {
-              setShowOpenShiftModal(true);
+              localStorage.setItem('pos_shift', JSON.stringify(current));
+          } else {
+              localStorage.removeItem('pos_shift');
+              if (user?.role !== 'admin') {
+                  setShowOpenShiftModal(true);
+              }
           }
       } catch (error) {
           console.error("Shift check failed", error);
+          const savedShift = localStorage.getItem('pos_shift');
+          if (savedShift) {
+              setShift(JSON.parse(savedShift));
+          }
       }
   };
 
@@ -141,6 +188,7 @@ const POSPage = () => {
       try {
           const res = await startShift(Number(shiftInputs.openingBalance));
           setShift(res);
+          localStorage.setItem('pos_shift', JSON.stringify(res));
           setShowOpenShiftModal(false);
           toast.success("Shift started");
       } catch (error) {
@@ -153,6 +201,7 @@ const POSPage = () => {
       try {
           await endShift({ closingBalance: Number(shiftInputs.closingBalance), notes: shiftInputs.notes });
           setShift(null);
+          localStorage.removeItem('pos_shift');
           setShowCloseShiftModal(false);
             if (user?.role !== 'admin') {
                     setShowOpenShiftModal(true);

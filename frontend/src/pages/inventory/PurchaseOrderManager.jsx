@@ -7,8 +7,7 @@ const PurchaseOrderManager = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showReceiveModal, setShowReceiveModal] = useState(null); // PO object or null
-
+  const [showReceiveModal, setShowReceiveModal] = useState(null);
   // Create Form State
   const [newPO, setNewPO] = useState({
     supplier: '',
