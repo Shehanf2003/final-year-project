@@ -56,7 +56,6 @@ def fmcg_clustering(days: int = 365, db = Depends(get_db)):
     
     recent_cutoff = now - datetime.timedelta(days=30)
     
-    # 1. Use aggregation pipeline to handle unwinding, weighted calculation, and grouping in MongoDB
     pipeline = [
         {"$match": {"createdAt": {"$gte": cutoff_date}}},
         {"$unwind": "$items"},
@@ -109,7 +108,6 @@ def fmcg_clustering(days: int = 365, db = Depends(get_db)):
 
     df['fmcg_class'] = df['cluster'].apply(assign_label)
 
-    # 2. Prevent N+1 query problem by batch-fetching all product names
     product_ids = []
     for pid in df['productId']:
         try:
@@ -146,7 +144,6 @@ def get_month_clusters(year: int, month: int, db) -> tuple:
     start_date = datetime.datetime(year, month, 1, tzinfo=datetime.timezone.utc)
     end_date = datetime.datetime(year, month, last_day, 23, 59, 59, tzinfo=datetime.timezone.utc)
     
-    # Push the heavy grouping computations to the database using an aggregation pipeline
     pipeline = [
         {"$match": {"createdAt": {"$gte": start_date, "$lte": end_date}}},
         {"$unwind": "$items"},
@@ -164,7 +161,7 @@ def get_month_clusters(year: int, month: int, db) -> tuple:
     if df.empty: return {}, {}
     
     df['productId'] = df['_id'].astype(str)
-    if len(df) < 3: return {}, {} # Not enough data to cluster
+    if len(df) < 3: return {}, {}
 
     X = df[['quantity']]
     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
@@ -191,21 +188,17 @@ def fmcg_clustering_monthly_compare(year: int, month: int, db = Depends(get_db))
     Evaluates FMCG classes for the target month and compares them to the previous month,
     flagging products that have downgraded. Optimized to reduce database load.
     """
-    # 1. Calculate previous month and year
     prev_month = 12 if month == 1 else month - 1
     prev_year = year - 1 if month == 1 else year
 
-    # 2. Get the classification dictionaries for both months
     prev_month_classes, _ = get_month_clusters(prev_year, prev_month, db)
     current_month_classes, current_month_stats = get_month_clusters(year, month, db)
 
     if not current_month_classes:
         raise HTTPException(status_code=404, detail=f"Not enough data to form clusters for {year}-{month}")
 
-    # 3. Define a scoring system to evaluate trends mathematically
     class_scores = {"Fast": 3, "Normal": 2, "Slow": 1, "None": 0}
 
-    # 4. Eliminate N+1 query problem by fetching all product names in a single batch
     product_ids = []
     for pid in current_month_stats.keys():
         try:
@@ -216,13 +209,11 @@ def fmcg_clustering_monthly_compare(year: int, month: int, db = Depends(get_db))
     products_cursor = db.products.find({"_id": {"$in": product_ids}}, {"name": 1})
     product_names = {str(p["_id"]): p.get("name", "Unknown") for p in products_cursor}
 
-    # 5. Build the final results with comparison logic
     results = []
     for prod_id, stats in current_month_stats.items():
         current_class = current_month_classes.get(prod_id, "Slow")
         prev_class = prev_month_classes.get(prod_id, "None")
         
-        # Determine the trend
         current_score = class_scores[current_class]
         prev_score = class_scores[prev_class]
         
@@ -235,7 +226,6 @@ def fmcg_clustering_monthly_compare(year: int, month: int, db = Depends(get_db))
         else:
             trend = "Stable"
             
-        # Check for the specific critical drop (Fast -> Slow)
         critical_drop = (prev_class == "Fast" and current_class == "Slow")
 
         results.append({
@@ -246,10 +236,9 @@ def fmcg_clustering_monthly_compare(year: int, month: int, db = Depends(get_db))
             "currentClass": current_class,
             "previousClass": prev_class,
             "trend": trend,
-            "criticalDrop": critical_drop # Boolean flag for frontend UI
+            "criticalDrop": critical_drop
         })
 
-    # Sort so that Critical Drops appear at the very top, followed by Fast items
     sorted_results = sorted(results, key=lambda x: (not x['criticalDrop'], x['currentClass'] != 'Fast', -x['totalQuantity']))
     
     return {
@@ -298,9 +287,8 @@ def demand_forecast(product_id: str, days_to_predict: int = 30, db = Depends(get
     
     daily_sales = df.groupby('ds')['y'].sum().reset_index()
     daily_sales.set_index('ds', inplace=True)
-    daily_sales = daily_sales.asfreq('D', fill_value=0).reset_index()
+    daily_sales = daily_sales.asfreq('D').reset_index()
 
-    # Handle Extreme Outliers: Set top 1% of spikes to None so Prophet ignores them
     upper_limit = daily_sales['y'].quantile(0.99)
     daily_sales.loc[daily_sales['y'] > upper_limit, 'y'] = None
 
@@ -308,7 +296,9 @@ def demand_forecast(product_id: str, days_to_predict: int = 30, db = Depends(get
         yearly_seasonality='auto', 
         weekly_seasonality=True, 
         daily_seasonality=False,
-        changepoint_prior_scale=0.1
+        changepoint_prior_scale=0.05,
+        seasonality_prior_scale=10.0,
+        seasonality_mode='multiplicative'
     )
     model.add_seasonality(name='monthly', period=30.5, fourier_order=5)
     
@@ -364,12 +354,11 @@ def evaluate_forecast(product_id: str, test_days: int = 10, db = Depends(get_db)
     
     daily_sales = df.groupby('ds')['y'].sum().reset_index()
     daily_sales.set_index('ds', inplace=True)
-    daily_sales = daily_sales.asfreq('D', fill_value=0).reset_index()
+    daily_sales = daily_sales.asfreq('D').reset_index()
 
     train = daily_sales.iloc[:-test_days].copy()
     actual_test = daily_sales.iloc[-test_days:].copy()
 
-    # Handle Extreme Outliers (only in training data to preserve test metrics)
     upper_limit = train['y'].quantile(0.99)
     train.loc[train['y'] > upper_limit, 'y'] = None
 
@@ -378,7 +367,9 @@ def evaluate_forecast(product_id: str, test_days: int = 10, db = Depends(get_db)
             yearly_seasonality='auto', 
             weekly_seasonality=True, 
             daily_seasonality=False,
-            changepoint_prior_scale=0.1
+            changepoint_prior_scale=0.05,
+            seasonality_prior_scale=10.0,
+            seasonality_mode='multiplicative'
         )
         model.add_seasonality(name='monthly', period=30.5, fourier_order=5)
         model.add_country_holidays(country_name='LK')
@@ -390,14 +381,18 @@ def evaluate_forecast(product_id: str, test_days: int = 10, db = Depends(get_db)
     forecast = model.predict(future)
     predictions = forecast['yhat'].tail(test_days).apply(lambda x: max(0, x)).values
 
-    mae = mean_absolute_error(actual_test['y'], predictions)
-    rmse = np.sqrt(mean_squared_error(actual_test['y'], predictions))
+    valid_mask = actual_test['y'].notna()
+    valid_actuals = actual_test.loc[valid_mask, 'y']
+    valid_predictions = predictions[valid_mask]
+
+    mae = mean_absolute_error(valid_actuals, valid_predictions) if len(valid_actuals) > 0 else 0
+    rmse = np.sqrt(mean_squared_error(valid_actuals, valid_predictions)) if len(valid_actuals) > 0 else 0
     
     comparison = []
     for date, actual, predicted in zip(actual_test['ds'], actual_test['y'], predictions):
         comparison.append({
             "date": date.strftime("%Y-%m-%d"),
-            "actualQuantity": actual,
+            "actualQuantity": 0 if pd.isna(actual) else actual,
             "predictedQuantity": round(predicted, 2)
         })
 
@@ -423,19 +418,16 @@ def optimize_profit(
     Calculates Actual Month-to-Date Gross Profit, uses Prophet to forecast the 
     remaining days of the current month, and prescribes realistic expense reductions.
     """
-    # 1. Real-World Calendar Logic
     now = datetime.datetime.now()
     days_in_month = calendar.monthrange(now.year, now.month)[1]
     days_passed = now.day
     days_remaining = max(1, days_in_month - days_passed)
     current_ym = now.strftime("%Y-%m")
 
-    # 2. Resilient DB Pipeline (Fixed Timezones & Null Costs)
     pipeline = [
         {"$unwind": "$items"},
         {"$match": {"status": {"$ne": "returned"}}},
         {"$project": {
-            # Locked to Sri Lanka Time to prevent UTC day-shifting
             "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$createdAt", "timezone": "+05:30"}},
             "year_month": {"$dateToString": {"format": "%Y-%m", "date": "$createdAt", "timezone": "+05:30"}},
             "gross_profit": {
@@ -456,24 +448,19 @@ def optimize_profit(
 
     df = pd.DataFrame(sales)
     
-    # 3. Calculate MTD Gross Profit (Money already in the bank)
     mtd_df = df[df['year_month'] == current_ym]
     mtd_gross_profit = float(mtd_df['gross_profit'].sum())
 
-    # 4. Prepare data for Prophet
     df['ds'] = pd.to_datetime(df['date'])
     df.rename(columns={'gross_profit': 'y'}, inplace=True)
     
     daily_profit = df.groupby('ds')['y'].sum().reset_index()
     daily_profit.set_index('ds', inplace=True)
-    # Fill actual zero-sales days with 0 instead of NaN
     daily_profit = daily_profit.asfreq('D', fill_value=0).reset_index()
 
-    # 5. Fix Outlier Handling (Clip instead of Delete)
     upper_limit = daily_profit['y'].quantile(0.99)
     daily_profit['y'] = daily_profit['y'].clip(upper=upper_limit)
 
-    # 6. Train the Model
     try:
         model = Prophet(
             yearly_seasonality='auto', 
@@ -487,14 +474,12 @@ def optimize_profit(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Model training failed: {str(e)}")
 
-    # 7. Predict ONLY the remaining days in the current month
     future = model.make_future_dataframe(periods=days_remaining)
     forecast = model.predict(future)
     future_forecast = forecast.tail(days_remaining)
     
     forecasted_remaining_gross_profit = float(future_forecast['yhat'].apply(lambda x: max(0, x)).sum())
 
-    # 8. The Math Fix: Combine Actuals with Forecasts
     total_expected_gross_profit = mtd_gross_profit + forecasted_remaining_gross_profit
     
     target_expenses = total_expected_gross_profit - target_net_profit
@@ -503,7 +488,6 @@ def optimize_profit(
     suggestions = []
     is_achievable = bool(target_expenses >= 0)
 
-    # 9. Optimizer Logic 
     if not is_achievable:
         suggestions.append("Critical: Target profit exceeds total expected Gross Profit for this month. Expense cuts alone are insufficient; you must increase sales volume or retail prices.")
     elif expense_reduction_needed > 0:
@@ -551,7 +535,6 @@ def optimize_profit(
     else:
         suggestions.append("Excellent: Based on your current Month-to-Date profit and forecasted volume, you are already on track to hit or exceed your target. No expense reductions are needed.")
 
-    # 10. Alerts
     active_alerts = []
     if expense_reduction_needed > 0 and innovator_brand_percentage > 20.0:
         active_alerts.append({

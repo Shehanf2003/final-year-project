@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, ShoppingCart, AlertCircle, X, PlusCircle, Activity, Calendar, ArrowUpRight, ArrowDownRight, Minus, Sparkles } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const SkeletonLoader = () => (
   <div className="animate-pulse space-y-6 w-full">
@@ -7,8 +8,7 @@ const SkeletonLoader = () => (
   </div>
 );
 
-// Updated props to match the backend 'days' parameter
-const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
+const FmcgDashboard = ({ refreshTrigger }) => {
     const [showPoSuggestions, setShowPoSuggestions] = useState(false);
     const [poModal, setPoModal] = useState({ isOpen: false, data: null });
     const [poForm, setPoForm] = useState({ supplier: '', unitCost: '' });
@@ -17,36 +17,11 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
     const [suppliers, setSuppliers] = useState([]);
     const [products, setProducts] = useState([]);
 
-    const [fmcgData, setFmcgData] = useState([]);
-    const [silhouetteScore, setSilhouetteScore] = useState(null);
-    const [loading, setLoadingFmcg] = useState(false);
-    const [error, setFmcgError] = useState('');
-
-    const [viewMode, setViewMode] = useState('overview');
     const [compareYear, setCompareYear] = useState(new Date().getFullYear());
     const [compareMonth, setCompareMonth] = useState(new Date().getMonth() + 1);
     const [compareData, setCompareData] = useState(null);
     const [loadingCompare, setLoadingCompare] = useState(false);
     const [compareError, setCompareError] = useState('');
-
-    const fetchFmcgData = async () => {
-        setLoadingFmcg(true);
-        setFmcgError('');
-        
-        try {
-            // Replaced buildDateQuery with the simpler 'days' parameter matching the FastAPI backend
-            const response = await fetch(`http://localhost:8000/api/ml/fmcg-clustering?days=${days}`);
-            if (!response.ok) throw new Error('Failed to fetch');
-            const data = await response.json();
-            
-            setFmcgData(data.data || []);
-            setSilhouetteScore(data.silhouetteScore);
-        } catch (error) {
-            setFmcgError(error.message);
-        } finally {
-            setLoadingFmcg(false);
-        }
-    };
 
     const fetchCompareData = async () => {
         setLoadingCompare(true);
@@ -69,16 +44,9 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
     };
 
     useEffect(() => {
-        fetchFmcgData();
+        fetchCompareData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [refreshTrigger, days]);
-
-    useEffect(() => {
-        if (viewMode === 'monthly') {
-            fetchCompareData();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [viewMode, compareYear, compareMonth, refreshTrigger]);
+    }, [compareYear, compareMonth, refreshTrigger]);
 
     useEffect(() => {
         const fetchInventoryData = async () => {
@@ -98,16 +66,12 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
         fetchInventoryData();
     }, []);
 
-    if (loading) return <SkeletonLoader />;
+    const hasData = compareData && compareData.data && compareData.data.length > 0;
 
-    const hasData = fmcgData && fmcgData.length > 0;
-
-    // Dynamically calculate a 30-day restock based on the actual 'days' window provided
     const poSuggestions = hasData 
-        ? fmcgData.filter(item => item.fmcgClass === 'Fast').map(item => ({ 
+        ? compareData.data.filter(item => item.currentClass === 'Fast').map(item => ({ 
             ...item, 
-            // Use the seasonalScore instead of raw totalQuantity
-            suggestedQty: Math.ceil((item.seasonalScore / days) * 30) 
+            suggestedQty: item.totalQuantity 
         }))
         : [];
 
@@ -117,12 +81,12 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
         try {
             const matchedProduct = products.find(p => p.name === poModal.data?.productName);
             if (!matchedProduct) {
-                alert(`Error: Product "${poModal.data?.productName}" not found in inventory database.`);
+                toast.error(`Error: Product "${poModal.data?.productName}" not found in inventory database.`);
                 return;
             }
 
             if (!poForm.supplier) {
-                alert("Please select a supplier.");
+                toast.error("Please select a supplier.");
                 return;
             }
 
@@ -147,12 +111,12 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
 
             if (!res.ok) throw new Error((await res.json()).message || 'Failed to create PO');
 
-            alert(`✅ Purchase Order successfully created for ${poModal.data?.productName}!`);
+            toast.success(`Purchase Order successfully created for ${poModal.data?.productName}!`);
             setPoModal({ isOpen: false, data: null });
             setPoForm({ supplier: '', unitCost: '' });
             setSupplierSearch('');
         } catch (err) {
-            alert(err.message);
+            toast.error(err.message);
         }
     };
 
@@ -165,38 +129,14 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                             <Package className="w-6 h-6 text-cyan-400" />
                             FMCG K-Means Analysis
                         </h2>
-                        {viewMode === 'overview' && silhouetteScore !== null && (
-                            <span className="flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-md text-xs font-bold shadow-sm" title="Silhouette Score: Measures cluster quality (closer to 1.0 is better)">
-                                <Activity className="w-3.5 h-3.5" />
-                                Model Confidence: {silhouetteScore}
-                            </span>
-                        )}
                     </div>
                     <p className="text-base text-gray-400 mt-2 font-bold">
-                        {viewMode === 'overview' 
-                            ? `Categorizes products dynamically based on ${days}-day volume, order frequency, and current month seasonality.`
-                            : `Compares product movement categories between ${compareMonth}/${compareYear} and the previous month.`
-                        }
+                        Compares product movement categories between {compareMonth}/{compareYear} and the previous month.
                     </p>
-                </div>
-                
-                <div className="flex gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-700 shrink-0">
-                    <button 
-                        onClick={() => setViewMode('overview')}
-                        className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${viewMode === 'overview' ? 'bg-cyan-500 text-slate-950' : 'text-gray-400 hover:text-white hover:bg-slate-800'}`}
-                    >
-                        Overview
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('monthly')}
-                        className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${viewMode === 'monthly' ? 'bg-cyan-500 text-slate-950' : 'text-gray-400 hover:text-white hover:bg-slate-800'}`}
-                    >
-                        Monthly Compare
-                    </button>
                 </div>
             </div>
 
-            {viewMode === 'overview' && hasData && (
+            {hasData && (
                 <div className="flex justify-end mb-6">
                     <button 
                         onClick={() => setShowPoSuggestions(!showPoSuggestions)}
@@ -211,18 +151,7 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                     </button>
                 </div>
             )}
-            
-            {viewMode === 'overview' && error && (
-                <div className="mb-6 rounded-md bg-slate-900 p-5 border-l-4 border-orange-500 shadow-md">
-                    <div className="flex">
-                        <AlertCircle className="h-6 w-6 text-orange-500 mr-3 flex-shrink-0" />
-                        <div className="text-base text-white font-bold"><span className="font-black">Error:</span> {error}</div>
-                    </div>
-                </div>
-            )}
-            
-            {viewMode === 'overview' ? (
-                <>
+
             {showPoSuggestions && hasData && poSuggestions.length > 0 && (
                 <div className="mb-8 bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
                     <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3 tracking-wide">
@@ -235,7 +164,7 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                                 <div className="flex justify-between items-start mb-6">
                                     <div className="flex-1 min-w-0 mr-4">
                                         <p className="font-black text-white text-lg truncate" title={item.productName}>{item.productName}</p>
-                                        <p className="text-sm text-gray-400 mt-1 font-bold">{days}d Vol: {item.totalQuantity.toLocaleString()}</p>
+                                        <p className="text-sm text-gray-400 mt-1 font-bold">30d Vol: {item.totalQuantity.toLocaleString()}</p>
                                     </div>
                                     <div className="text-right shrink-0">
                                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Order Qty</p>
@@ -259,167 +188,119 @@ const FmcgDashboard = ({ days = 365, refreshTrigger }) => {
                 </div>
             )}
 
-            {!hasData && !error ? (
-                <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-4 border-slate-700 border-dashed bg-slate-900">
-                    <h3 className="text-xl font-bold text-white tracking-wide">No FMCG Data Available</h3>
-                    <p className="text-gray-400 text-base mt-2 font-bold">Adjust your analysis timeframe to see ABC clustering results.</p>
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <div className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-gray-400" />
+                    <select 
+                        value={compareYear} 
+                        onChange={e => setCompareYear(Number(e.target.value))} 
+                        className="bg-slate-950 border border-slate-700 text-white p-2.5 rounded-md text-sm font-bold outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                    >
+                        {[...Array(5)].map((_, i) => {
+                            const y = new Date().getFullYear() - i;
+                            return <option key={y} value={y}>{y}</option>;
+                        })}
+                    </select>
                 </div>
-            ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-700 shadow-sm">
-                    <table className="min-w-full divide-y divide-slate-700 text-left">
-                        <thead className="bg-slate-800">
-                            <tr>
-                                <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Product Name</th>
-                                <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Total Sold ({days}d)</th>
-                                <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Seasonal Score</th>
-                                <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Order Frequency</th>
-                                <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Classification</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-slate-900 divide-y divide-slate-700">
-                            {fmcgData.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-slate-800 transition-colors">
-                                    <td className="px-6 py-5 whitespace-nowrap text-base font-bold text-white">{item.productName}</td>
-                                    <td className="px-6 py-5 whitespace-nowrap">
-                                        <span className="inline-flex items-center px-3 py-1 rounded text-sm font-black bg-slate-800 text-gray-100 border border-slate-600 shadow-sm">
-                                            {item.totalQuantity.toLocaleString()}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-5 whitespace-nowrap text-base text-indigo-400 font-bold">{item.seasonalScore.toLocaleString()}</td>
-                                    <td className="px-6 py-5 whitespace-nowrap text-base text-gray-300 font-bold">{item.orderFrequency.toLocaleString()}</td>
-                                    <td className="px-6 py-5 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-black shadow-sm ${
-                                            item.fmcgClass === 'Fast' ? 'bg-cyan-500 text-slate-950' :
-                                            item.fmcgClass === 'Normal' ? 'bg-slate-600 text-white' :
-                                            'bg-orange-500 text-slate-950'
-                                        }`}>
-                                            {item.fmcgClass}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="flex items-center gap-2">
+                    <select 
+                        value={compareMonth} 
+                        onChange={e => setCompareMonth(Number(e.target.value))} 
+                        className="bg-slate-950 border border-slate-700 text-white p-2.5 rounded-md text-sm font-bold outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+                    >
+                        {[...Array(12)].map((_, i) => (
+                            <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            {compareError && (
+                <div className="mb-6 rounded-md bg-slate-900 p-5 border-l-4 border-orange-500 shadow-md">
+                    <div className="flex">
+                        <AlertCircle className="h-6 w-6 text-orange-500 mr-3 flex-shrink-0" />
+                        <div className="text-base text-white font-bold"><span className="font-black">Error:</span> {compareError}</div>
+                    </div>
                 </div>
             )}
-                </>
-            ) : (
-                <>
-                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                        <div className="flex items-center gap-2">
-                            <Calendar className="w-5 h-5 text-gray-400" />
-                            <select 
-                                value={compareYear} 
-                                onChange={e => setCompareYear(Number(e.target.value))} 
-                                className="bg-slate-950 border border-slate-700 text-white p-2.5 rounded-md text-sm font-bold outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-                            >
-                                {[...Array(5)].map((_, i) => {
-                                    const y = new Date().getFullYear() - i;
-                                    return <option key={y} value={y}>{y}</option>;
-                                })}
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <select 
-                                value={compareMonth} 
-                                onChange={e => setCompareMonth(Number(e.target.value))} 
-                                className="bg-slate-950 border border-slate-700 text-white p-2.5 rounded-md text-sm font-bold outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-                            >
-                                {[...Array(12)].map((_, i) => (
-                                    <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
-                                ))}
-                            </select>
-                        </div>
+
+            {loadingCompare && <SkeletonLoader />}
+
+            {!loadingCompare && !compareError && compareData && compareData.data && (
+                compareData.data.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-4 border-slate-700 border-dashed bg-slate-900">
+                        <h3 className="text-xl font-bold text-white tracking-wide">No Comparison Data Available</h3>
+                        <p className="text-gray-400 text-base mt-2 font-bold">Try selecting a different month or year.</p>
                     </div>
-
-                    {compareError && (
-                        <div className="mb-6 rounded-md bg-slate-900 p-5 border-l-4 border-orange-500 shadow-md">
-                            <div className="flex">
-                                <AlertCircle className="h-6 w-6 text-orange-500 mr-3 flex-shrink-0" />
-                                <div className="text-base text-white font-bold"><span className="font-black">Error:</span> {compareError}</div>
-                            </div>
-                        </div>
-                    )}
-
-                    {loadingCompare && <SkeletonLoader />}
-
-                    {!loadingCompare && !compareError && compareData && compareData.data && (
-                        compareData.data.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-4 border-slate-700 border-dashed bg-slate-900">
-                                <h3 className="text-xl font-bold text-white tracking-wide">No Comparison Data Available</h3>
-                                <p className="text-gray-400 text-base mt-2 font-bold">Try selecting a different month or year.</p>
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto rounded-xl border border-slate-700 shadow-sm">
-                                <table className="min-w-full divide-y divide-slate-700 text-left">
-                                    <thead className="bg-slate-800">
-                                        <tr>
-                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Product Name</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Total Sold</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Previous Class</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Current Class</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Trend</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-slate-900 divide-y divide-slate-700">
-                                        {compareData.data.map((item, idx) => (
-                                            <tr key={idx} className={`hover:bg-slate-800 transition-colors ${item.criticalDrop ? 'bg-red-900/10' : ''}`}>
-                                                <td className="px-6 py-5 whitespace-nowrap text-base font-bold text-white">
-                                                    <div className="flex items-center gap-2">
-                                                        {item.productName}
-                                                        {item.criticalDrop && (
-                                                            <span className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30">
-                                                                <AlertCircle className="w-3 h-3" /> Critical Drop
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-5 whitespace-nowrap">
-                                                    <span className="inline-flex items-center px-3 py-1 rounded text-sm font-black bg-slate-800 text-gray-100 border border-slate-600 shadow-sm">
-                                                        {item.totalQuantity.toLocaleString()}
+                ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-700 shadow-sm">
+                        <table className="min-w-full divide-y divide-slate-700 text-left">
+                            <thead className="bg-slate-800">
+                                <tr>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Product Name</th>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Total Sold</th>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Previous Class</th>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Current Class</th>
+                                    <th className="px-6 py-4 text-sm font-bold text-gray-300 uppercase tracking-wider">Trend</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-slate-900 divide-y divide-slate-700">
+                                {compareData.data.map((item, idx) => (
+                                    <tr key={idx} className={`hover:bg-slate-800 transition-colors ${item.criticalDrop ? 'bg-red-900/10' : ''}`}>
+                                        <td className="px-6 py-5 whitespace-nowrap text-base font-bold text-white">
+                                            <div className="flex items-center gap-2">
+                                                {item.productName}
+                                                {item.criticalDrop && (
+                                                    <span className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30">
+                                                        <AlertCircle className="w-3 h-3" /> Critical Drop
                                                     </span>
-                                                </td>
-                                                <td className="px-6 py-5 whitespace-nowrap text-base text-gray-400 font-bold">
-                                                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-black shadow-sm ${
-                                                        item.previousClass === 'Fast' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
-                                                        item.previousClass === 'Normal' ? 'bg-slate-600/50 text-gray-300 border border-slate-600' :
-                                                        item.previousClass === 'None' ? 'bg-gray-800 text-gray-500 border border-gray-700' :
-                                                        'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                                                    }`}>
-                                                        {item.previousClass}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-5 whitespace-nowrap">
-                                                    <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-black shadow-sm ${
-                                                        item.currentClass === 'Fast' ? 'bg-cyan-500 text-slate-950' :
-                                                        item.currentClass === 'Normal' ? 'bg-slate-600 text-white' :
-                                                        'bg-orange-500 text-slate-950'
-                                                    }`}>
-                                                        {item.currentClass}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-5 whitespace-nowrap">
-                                                    <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-black shadow-sm ${
-                                                        item.trend === 'Upward' ? 'text-green-400 bg-green-400/10 border border-green-400/20' :
-                                                        item.trend === 'Downward' ? 'text-red-400 bg-red-400/10 border border-red-400/20' :
-                                                        item.trend === 'New Entry' ? 'text-blue-400 bg-blue-400/10 border border-blue-400/20' :
-                                                        'text-gray-400 bg-gray-400/10 border border-gray-400/20'
-                                                    }`}>
-                                                        {item.trend === 'Upward' && <ArrowUpRight className="w-4 h-4 mr-1.5" />}
-                                                        {item.trend === 'Downward' && <ArrowDownRight className="w-4 h-4 mr-1.5" />}
-                                                        {item.trend === 'Stable' && <Minus className="w-4 h-4 mr-1.5" />}
-                                                        {item.trend === 'New Entry' && <Sparkles className="w-4 h-4 mr-1.5" />}
-                                                        {item.trend}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )
-                    )}
-                </>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5 whitespace-nowrap">
+                                            <span className="inline-flex items-center px-3 py-1 rounded text-sm font-black bg-slate-800 text-gray-100 border border-slate-600 shadow-sm">
+                                                {item.totalQuantity.toLocaleString()}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-5 whitespace-nowrap text-base text-gray-400 font-bold">
+                                            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-black shadow-sm ${
+                                                item.previousClass === 'Fast' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                                                item.previousClass === 'Normal' ? 'bg-slate-600/50 text-gray-300 border border-slate-600' :
+                                                item.previousClass === 'None' ? 'bg-gray-800 text-gray-500 border border-gray-700' :
+                                                'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                                            }`}>
+                                                {item.previousClass}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-5 whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-black shadow-sm ${
+                                                item.currentClass === 'Fast' ? 'bg-cyan-500 text-slate-950' :
+                                                item.currentClass === 'Normal' ? 'bg-slate-600 text-white' :
+                                                'bg-orange-500 text-slate-950'
+                                            }`}>
+                                                {item.currentClass}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-5 whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-black shadow-sm ${
+                                                item.trend === 'Upward' ? 'text-green-400 bg-green-400/10 border border-green-400/20' :
+                                                item.trend === 'Downward' ? 'text-red-400 bg-red-400/10 border border-red-400/20' :
+                                                item.trend === 'New Entry' ? 'text-blue-400 bg-blue-400/10 border border-blue-400/20' :
+                                                'text-gray-400 bg-gray-400/10 border border-gray-400/20'
+                                            }`}>
+                                                {item.trend === 'Upward' && <ArrowUpRight className="w-4 h-4 mr-1.5" />}
+                                                {item.trend === 'Downward' && <ArrowDownRight className="w-4 h-4 mr-1.5" />}
+                                                {item.trend === 'Stable' && <Minus className="w-4 h-4 mr-1.5" />}
+                                                {item.trend === 'New Entry' && <Sparkles className="w-4 h-4 mr-1.5" />}
+                                                {item.trend}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )
             )}
 
             {/* Create PO Modal */}

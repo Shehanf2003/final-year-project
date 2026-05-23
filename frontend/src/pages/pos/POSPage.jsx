@@ -94,7 +94,7 @@ const POSPage = () => {
     const handleBeforeUnload = (e) => {
       if (isOffline) {
         e.preventDefault();
-        e.returnValue = ''; // Required for Chrome to show the prompt
+        e.returnValue = '';
       }
     };
 

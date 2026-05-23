@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const NmraPriceManager = () => {
   const [prices, setPrices] = useState([]);
@@ -69,12 +70,13 @@ const NmraPriceManager = () => {
         setShowAddForm(false);
         setFormData({ genericName: '', maxPrice: '' });
         fetchPrices();
+        toast.success('NMRA price saved successfully');
       } else {
         const data = await res.json();
-        alert(data.message || 'Failed to save NMRA price');
+        toast.error(data.message || 'Failed to save NMRA price');
       }
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -92,12 +94,13 @@ const NmraPriceManager = () => {
       if (res.ok) {
         localStorage.removeItem(CACHE_KEY); // Invalidate cache
         fetchPrices(); // Refetch
+        toast.success('NMRA price deleted successfully');
       } else {
         const data = await res.json();
-        alert(data.message || 'Failed to delete NMRA price');
+        toast.error(data.message || 'Failed to delete NMRA price');
       }
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   };
 

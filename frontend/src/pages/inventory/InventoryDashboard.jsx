@@ -7,6 +7,7 @@ import PurchaseOrderManager from './PurchaseOrderManager';
 import ProductList from './ProductList';
 import NmraPriceManager from './NmraPriceManager';
 import { Package, PlusCircle, Boxes, ClipboardList, Truck, ShoppingCart, AlertTriangle, AlertCircle, FileText, Settings } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const InventoryDashboard = () => {
   // We don't strictly need the full inventory here, 
@@ -75,7 +76,7 @@ const InventoryDashboard = () => {
         throw new Error(data.message || 'Failed to add batch');
       }
 
-      alert('Batch added successfully!');
+      toast.success('Batch added successfully!');
       // Optional: Refresh products list if adding a batch somehow alters product definitions
       fetchProducts(); 
     } catch (err) {

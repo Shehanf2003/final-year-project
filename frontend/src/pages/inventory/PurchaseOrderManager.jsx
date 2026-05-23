@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, PackageCheck, Eye, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const PurchaseOrderManager = () => {
   const [pos, setPos] = useState([]);
@@ -70,8 +71,8 @@ const PurchaseOrderManager = () => {
     e.preventDefault();
     try {
         // Validate
-        if (!newPO.supplier) return alert("Select supplier");
-        if (newPO.items.some(i => !i.product)) return alert("Select product for all items");
+        if (!newPO.supplier) return toast.error("Select supplier");
+        if (newPO.items.some(i => !i.product)) return toast.error("Select product for all items");
 
         const res = await fetch('/api/inventory/purchase-orders', {
             method: 'POST',
@@ -84,9 +85,9 @@ const PurchaseOrderManager = () => {
         setShowCreateModal(false);
         setNewPO({ supplier: '', items: [{ product: '', quantity: 1, unitCost: 0 }] });
         fetchData();
-        alert("PO Created!");
+        toast.success("PO Created!");
     } catch (err) {
-        alert(err.message);
+        toast.error(err.message);
     }
   };
 
@@ -135,10 +136,10 @@ const PurchaseOrderManager = () => {
 
           setShowReceiveModal(null);
           fetchData();
-          alert("Stock Received Successfully!");
+          toast.success("Stock Received Successfully!");
 
       } catch (err) {
-          alert(err.message);
+          toast.error(err.message);
       }
   };
 
@@ -350,5 +351,3 @@ const PurchaseOrderManager = () => {
 
 
 export default PurchaseOrderManager;
-
-

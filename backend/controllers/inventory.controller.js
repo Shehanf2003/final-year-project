@@ -515,7 +515,6 @@ export const transferStock = async (req, res) => {
 
         await batch.save({ session });
 
-        // Note: Mongoose Model.create() requires the documents to be passed in an array when using a session
         await StockMovement.create([{
             product: batch.productId,
             batch: batch._id,

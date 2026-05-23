@@ -1,9 +1,6 @@
 import nodemailer from 'nodemailer';
 
-// Configure Nodemailer (Using Ethereal for Dev, or Environment variables for Prod)
-// In a real app, use process.env.SMTP_HOST, etc.
 const createTransporter = async () => {
-  // For development, we create a test account on the fly if no env vars are present
   if (!process.env.SMTP_HOST) {
     const testAccount = await nodemailer.createTestAccount();
     console.log('NotificationService: Created Ethereal Test Account:', testAccount.user);
@@ -11,10 +8,10 @@ const createTransporter = async () => {
     return nodemailer.createTransport({
       host: "smtp.ethereal.email",
       port: 587,
-      secure: false, // true for 465, false for other ports
+      secure: false,
       auth: {
-        user: testAccount.user, // generated ethereal user
-        pass: testAccount.pass, // generated ethereal password
+        user: testAccount.user,
+        pass: testAccount.pass,
       },
     });
   }
@@ -50,7 +47,6 @@ export const sendEmail = async (to, subject, html) => {
     });
 
     console.log("NotificationService: Email sent: %s", info.messageId);
-    // Preview only available when using Ethereal account
     if (nodemailer.getTestMessageUrl(info)) {
         console.log("NotificationService: Preview URL: %s", nodemailer.getTestMessageUrl(info));
     }
@@ -61,13 +57,6 @@ export const sendEmail = async (to, subject, html) => {
   }
 };
 
-/**
- * Sends an SMS using a provider (Placeholder).
- * Replace the logic inside this function with your local gateway API (Dialog/Mobitel/TextWare).
- *
- * @param {string} phoneNumber - The recipient's phone number (e.g., +94771234567)
- * @param {string} message - The text message content
- */
 export const sendSMS = async (phoneNumber, message) => {
   if (!phoneNumber) {
       console.warn("NotificationService: No phone number provided for SMS.");
@@ -76,14 +65,12 @@ export const sendSMS = async (phoneNumber, message) => {
 
   const smsGatewayUrl = process.env.SMS_GATEWAY_URL;
 
-  // Fallback to mock if no SMS Gateway URL is provided in the environment
   if (!smsGatewayUrl) {
       console.log(`[SMS GATEWAY MOCK] Sending to ${phoneNumber}: "${message}"`);
       return true;
   }
 
   try {
-      // Integrating with Traccar SMS Gateway (Android) or similar JSON POST REST APIs
       const response = await fetch(smsGatewayUrl, { 
           method: 'POST',
           headers: {
@@ -119,10 +106,8 @@ export const sendLowStockAlert = async (users, product, locationName, currentQty
     const smsMessage = `ALERT: ${product.name} is low (${currentQty}) at ${locationName}. Re-order ASAP.`;
 
     const promises = users.map(async (user) => {
-        // Send Email
         await sendEmail(user.email, subject, message);
 
-        // Send SMS (if phone number exists)
         if (user.phoneNumber) {
             await sendSMS(user.phoneNumber, smsMessage);
         }
@@ -132,8 +117,6 @@ export const sendLowStockAlert = async (users, product, locationName, currentQty
   };
 
 export const sendBillNotification = async (contactInfo, saleData) => {
-    // Assuming Frontend is running on same host or configured via env
-    // For dev defaults:
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const billUrl = `${frontendUrl}/bill/${saleData._id}`;
 

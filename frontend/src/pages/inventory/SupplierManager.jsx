@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Check, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const SupplierManager = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -44,20 +45,25 @@ const SupplierManager = () => {
         setShowAddForm(false);
         setNewSupplier({ name: '', email: '', phone: '', address: '', contactPerson: '' });
         fetchSuppliers();
+        toast.success("Supplier added successfully");
       } else {
-          alert("Failed to add supplier");
+          toast.error("Failed to add supplier");
       }
     } catch (error) {
-      alert(error.message);
+      toast.error(error.message);
     }
   };
 
   const handleDelete = async (id) => {
-      if(!confirm("Are you sure?")) return;
+      if(!window.confirm("Are you sure?")) return;
       try {
           await fetch(`/api/inventory/suppliers/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
           fetchSuppliers();
-      } catch (e) { console.error(e); }
+          toast.success("Supplier deleted successfully");
+      } catch (e) { 
+          console.error(e); 
+          toast.error("Failed to delete supplier");
+      }
   }
 
   return (
@@ -153,4 +159,3 @@ const SupplierManager = () => {
 
 
 export default SupplierManager;
-

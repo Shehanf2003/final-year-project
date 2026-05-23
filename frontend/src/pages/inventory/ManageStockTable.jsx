@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-table';
 import clsx from 'clsx';
 import { Save, Trash2, ChevronRight, ChevronDown, ArrowRightLeft, Edit3, Search, Scan, Printer, Check, X, DollarSign } from 'lucide-react';
+import toast from 'react-hot-toast';
 import ScannerModal from '../../components/ScannerModal';
 import PrintLabelModal from '../../components/inventory/PrintLabelModal';
 
@@ -18,17 +19,14 @@ const ManageStockTable = () => {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showScanner, setShowScanner] = useState(false);
-  const [printData, setPrintData] = useState(null); // For Print Modal
+  const [printData, setPrintData] = useState(null);
 
-  // Transfer Modal State
   const [showTransfer, setShowTransfer] = useState(null);
   const [transferData, setTransferData] = useState({ fromLocation: '', toLocation: '', quantity: 0, reason: '' });
 
-  // Adjust Modal State
   const [showAdjust, setShowAdjust] = useState(null);
   const [adjustData, setAdjustData] = useState({ location: '', quantity: 0, reason: '' });
 
-  // Inline Edit State for Prices
   const [editingBatchId, setEditingBatchId] = useState(null);
   const [editPrices, setEditPrices] = useState({ mrp: 0, costPrice: 0 });
 
@@ -63,7 +61,6 @@ const ManageStockTable = () => {
     fetchData();
   }, []);
 
-  // Filter Data
   const filteredData = useMemo(() => {
       if (!searchQuery) return data;
       const lowerQuery = searchQuery.toLowerCase();
@@ -84,12 +81,12 @@ const ManageStockTable = () => {
       });
       if (!response.ok) throw new Error('Failed to delete');
       setData(prev => prev.filter(item => item._id !== id));
+      toast.success("Batch deleted successfully");
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   };
 
-  // --- Transfer Logic ---
   const openTransferModal = (batch) => {
       setShowTransfer(batch);
       const firstLoc = batch.stockDistribution?.[0]?.location;
@@ -120,15 +117,14 @@ const ManageStockTable = () => {
 
           if (!res.ok) throw new Error((await res.json()).message || 'Transfer failed');
 
-          alert("Transfer Successful");
+          toast.success("Transfer Successful");
           setShowTransfer(null);
           fetchData();
       } catch (err) {
-          alert(err.message);
+          toast.error(err.message);
       }
   };
 
-  // --- Adjust Logic ---
   const openAdjustModal = (batch) => {
       setShowAdjust(batch);
       const firstLoc = batch.stockDistribution?.[0]?.location;
@@ -143,7 +139,6 @@ const ManageStockTable = () => {
   };
 
   const handleAdjustLocationChange = (locId) => {
-       // When location changes in dropdown, update the quantity input to reflect current stock there
        const dist = showAdjust.stockDistribution.find(s => (s.location._id || s.location) === locId);
        setAdjustData({
            ...adjustData,
@@ -170,11 +165,11 @@ const ManageStockTable = () => {
 
           if (!res.ok) throw new Error((await res.json()).message || 'Adjustment failed');
 
-          alert("Stock Adjusted Successfully");
+          toast.success("Stock Adjusted Successfully");
           setShowAdjust(null);
           fetchData();
       } catch (err) {
-          alert(err.message);
+          toast.error(err.message);
       }
   };
 
@@ -191,11 +186,11 @@ const ManageStockTable = () => {
 
           if (!res.ok) throw new Error((await res.json()).message || 'Failed to save prices');
 
-          // Refresh list to show updated prices
+          toast.success("Prices saved successfully");
           setEditingBatchId(null);
           fetchData();
       } catch (err) {
-          alert(err.message);
+          toast.error(err.message);
       }
   };
 
@@ -351,7 +346,6 @@ const ManageStockTable = () => {
 
   return (
     <div className="space-y-4">
-        {/* Search Bar */}
         <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search className="h-5 w-5 text-gray-400" />
@@ -362,7 +356,7 @@ const ManageStockTable = () => {
                 placeholder="Search by Product Name, Batch Number, or Barcode (Scan)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus // Helpful for scanners acting as keyboard
+                autoFocus
             />
              <div className="absolute inset-y-0 right-0 flex items-center">
                  <button
@@ -435,7 +429,6 @@ const ManageStockTable = () => {
         </table>
       </div>
 
-      {/* Transfer Modal */}
       {showTransfer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="bg-white rounded p-6 max-w-md w-full">
@@ -500,7 +493,6 @@ const ManageStockTable = () => {
         </div>
       )}
 
-      {/* Adjust Modal */}
       {showAdjust && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="bg-white rounded p-6 max-w-md w-full">
@@ -516,9 +508,6 @@ const ManageStockTable = () => {
                             required
                         >
                             <option value="">Select Location</option>
-                            {/* Show existing locations for this batch, OR all locations if we allow adding stock to new loc?
-                                For now, let's allow all locations to enable "Adding" stock found in a new place.
-                             */}
                             {locations.map(l => (
                                 <option key={l._id} value={l._id}>{l.name}</option>
                             ))}
@@ -556,7 +545,6 @@ const ManageStockTable = () => {
         </div>
       )}
 
-      {/* Scanner Modal */}
       {showScanner && (
           <ScannerModal
             onClose={() => setShowScanner(false)}
@@ -567,7 +555,6 @@ const ManageStockTable = () => {
           />
       )}
 
-      {/* Print Label Modal */}
       <PrintLabelModal
         isOpen={!!printData}
         onClose={() => setPrintData(null)}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axiosInstance from '../lib/axios';
 import { Loader2, DollarSign, TrendingUp, AlertTriangle, Clock, AlertCircle, Package, PlusCircle, X, ShoppingCart } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const ReportingAnalytics = ({ startDate, endDate }) => {
   
@@ -94,11 +95,11 @@ const ReportingAnalytics = ({ startDate, endDate }) => {
   const handlePoSubmit = async (e) => {
     e.preventDefault();
     if (!poForm.supplier) {
-      alert("Please select a supplier.");
+      toast.error("Please select a supplier.");
       return;
     }
     if (!poForm.quantity || poForm.quantity <= 0) {
-      alert("Please enter a valid quantity.");
+      toast.error("Please enter a valid quantity.");
       return;
     }
     try {
@@ -112,12 +113,12 @@ const ReportingAnalytics = ({ startDate, endDate }) => {
       };
       
       await axiosInstance.post('/inventory/purchase-orders', newPO);
-      alert(`✅ Purchase Order successfully created for ${poModal.data?.name}!`);
+      toast.success(`Purchase Order successfully created for ${poModal.data?.name}!`);
       setPoModal({ isOpen: false, data: null });
       setPoForm({ supplier: '', unitCost: '', quantity: '' });
       setSupplierSearch('');
     } catch (err) {
-      alert(err.response?.data?.message || err.message || 'Failed to create PO');
+      toast.error(err.response?.data?.message || err.message || 'Failed to create PO');
     }
   };
 
