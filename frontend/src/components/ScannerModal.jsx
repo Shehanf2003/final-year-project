@@ -25,6 +25,25 @@ const ScannerModal = ({ onClose, onScan }) => {
     const scanner = new Html5Qrcode("reader");
     scannerRef.current = scanner;
 
+    const playBeep = () => {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); 
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.1); 
+      } catch (error) {
+        console.error("Audio playback failed:", error);
+      }
+    };
+
     const startScanning = async () => {
       try {
         await scanner.start(
@@ -37,6 +56,7 @@ const ScannerModal = ({ onClose, onScan }) => {
           (decodedText) => {
             if (!isProcessing) {
                 isProcessing = true;
+                playBeep();
                 onScan(decodedText);
                 onClose();
             }
