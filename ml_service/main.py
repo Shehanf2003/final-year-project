@@ -251,8 +251,12 @@ def fmcg_clustering_monthly_compare(year: int, month: int, db = Depends(get_db))
 @app.get("/api/ml/forecast/{product_id}")
 def demand_forecast(product_id: str, days_to_predict: int = 30, db = Depends(get_db)):
     """
-    Predicts future daily sales for a specific product based on historical trends
-    using the Holt-Winters Exponential Smoothing model.
+    Predicts future daily sales for a specific product based on historical trends 
+        using the Prophet time-series forecasting model. 
+    
+    This implementation automatically removes the top 1% of outlier sales spikes, 
+    ignores returned items, and accounts for weekly seasonality, a 30.5-day 
+    monthly cycle, and national holidays in Sri Lanka.
     """
     try:
         obj_id = ObjectId(product_id)

@@ -64,7 +64,7 @@ const ForecastDashboard = () => {
                     <TrendingUp className="w-6 h-6 text-cyan-400" />
                     Demand Forecasting (30 Days)
                 </h2>
-                <p className="text-base text-gray-400 mt-2 font-bold">Predicts future daily sales using Holt-Winters Exponential Smoothing. Requires minimum 30 data points.</p>
+                <p className="text-base text-gray-400 mt-2 font-bold"> Predicts future daily sales for a specific product based on historical trends using the Prophet time-series forecasting model. </p>
             </div>
             
             <form onSubmit={fetchForecast} className="flex flex-col sm:flex-row gap-4 mb-8">
